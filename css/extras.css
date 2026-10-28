@@ -90,3 +90,49 @@
 .pag-girando { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--c-muted); border-top-color: var(--accent); animation: girar .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
 @keyframes girar { to { transform: rotate(360deg); } }
 .w-botoes .w-op[data-a] { flex: 1; }
+
+/* ============ planos de venda: cadeado, convite e comparação ============ */
+.nav-cad { display: inline-flex; margin-left: auto; opacity: .7; }
+.nav-cad .i { width: 14px; height: 14px; }
+.nav-item.bloq span, .nb-item.bloq span { opacity: .75; }
+.nb-item { position: relative; }
+.nb-item .nav-cad { position: absolute; top: 2px; right: calc(50% - 20px); margin: 0; }
+.nb-item .nav-cad .i { width: 12px; height: 12px; }
+.mais-lista .nav-cad { margin-left: auto; color: var(--muted); }
+.mais-lista .nav-cad + .i { margin-left: 8px; }
+.card.bloqueado { max-width: 620px; margin: 8px auto 0; text-align: center; padding: 34px 26px; }
+.bloq-icone { display: inline-grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-txt); margin-bottom: 12px; }
+.bloq-icone .i { width: 26px; height: 26px; }
+.card.bloqueado h2 { font-size: 20px; margin: 0 0 6px; }
+.card.bloqueado > p { color: var(--text-2); margin: 0 0 16px; }
+.bloq-lista { list-style: none; padding: 0; margin: 0 auto 20px; display: grid; gap: 10px; text-align: left; max-width: 440px; }
+.bloq-lista li { display: flex; gap: 10px; align-items: flex-start; font-size: 14.5px; }
+.bloq-lista .i { color: var(--ok); flex: none; margin-top: 2px; }
+.trava-linha { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: var(--r-sm); border: 1px dashed var(--line-2); background: var(--surface-2); color: var(--text-2); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; }
+.trava-linha:hover { border-color: var(--accent); }
+.trava-linha .i { color: var(--accent-txt); flex: none; }
+.trava-linha span { flex: 1; }
+.trava-linha b { color: var(--accent-txt); font-size: 13px; }
+.chave.travada, .campo.travada { opacity: .5; cursor: not-allowed; }
+.plano-resumo { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 4px 0 12px; }
+.plano-item { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; }
+.plano-item .i { width: 15px; height: 15px; color: var(--ok); }
+.plano-item.fora { color: var(--muted); }
+.plano-item.fora .i { color: var(--muted); }
+.planos-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.plano-card { display: flex; flex-direction: column; gap: 8px; padding: 18px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.plano-card.atual { border-color: var(--ok); }
+.plano-card.destaque { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.plano-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.plano-topo h3 { margin: 0; font-size: 17px; }
+.plano-preco b { font-size: 26px; letter-spacing: -.02em; }
+.plano-preco small { color: var(--muted); margin-left: 2px; }
+.plano-card > p { margin: 0; font-size: 13.5px; min-height: 2.6em; }
+.plano-lista { list-style: none; padding: 0; margin: 4px 0 10px; display: grid; gap: 7px; flex: 1; }
+.plano-lista li { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; }
+.plano-lista .i { width: 15px; height: 15px; color: var(--ok); flex: none; margin-top: 2px; }
+.plano-lista li.fora { color: var(--muted); }
+.plano-lista li.fora .i { color: var(--muted); }
+.plano-card .btn { justify-content: center; }
+.plano li.fora { color: var(--muted); }
+.plano li.fora .i { color: var(--muted); }

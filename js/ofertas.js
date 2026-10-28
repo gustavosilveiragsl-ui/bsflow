@@ -26,6 +26,7 @@ const Promocoes = {
   },
   // o chat divulga as que valem hoje ou começam dentro do prazo de agendamento
   divulgaveis(b) {
+    if (!Planos.tem(b, 'promocoes')) return [];
     const hoje = Datas.hoje(), lim = Agenda.ultimoDiaCliente(b);
     return Store.de('promocoes', b.id).filter(p => p.ativo !== false && p.divulgar !== false && p.fim >= hoje && p.inicio <= lim)
       .sort((p, q) => p.inicio.localeCompare(q.inicio));
@@ -52,6 +53,7 @@ const Promocoes = {
   },
   desconto(p, valor) { return round2(p.tipo === 'valor' ? Math.min(valor, p.valor) : valor * p.valor / 100); },
   melhor(b, tipo, item, ctx) {
+    if (!Planos.tem(b, 'promocoes')) return null;
     let m = null;
     for (const p of Store.de('promocoes', b.id)) {
       if (!this.vale(p, tipo, item.id, ctx)) continue;
@@ -94,7 +96,7 @@ const Promocoes = {
 
 /* ---------------- fidelidade ---------------- */
 const Fidelidade = {
-  programas(b, { todos = false } = {}) { return Store.de('fidelidades', b.id).filter(f => todos || f.ativo !== false); },
+  programas(b, { todos = false } = {}) { return Planos.tem(b, 'fidelidade') || todos ? Store.de('fidelidades', b.id).filter(f => todos || f.ativo !== false) : []; },
   conta(prog, a) { return !prog.servicos?.length || a.servicos.some(s => prog.servicos.includes(s.id)); },
   // posição de uma visita (data/hora) na contagem: concluídas + marcadas antes dela
   posicao(b, prog, tel, data = Datas.hoje(), ini = 0, ignorar = null) {
@@ -126,11 +128,12 @@ const Fidelidade = {
 
 /* ---------------- mensalistas (planos mensais dos clientes) ---------------- */
 const Mensal = {
-  planos(b, { todos = false } = {}) { return Store.de('planos_mensais', b.id).filter(p => todos || p.ativo !== false).sort((p, q) => p.valor - q.valor); },
+  planos(b, { todos = false } = {}) { return Planos.tem(b, 'mensalistas') || todos ? Store.de('planos_mensais', b.id).filter(p => todos || p.ativo !== false).sort((p, q) => p.valor - q.valor) : []; },
   plano(m) { return Store.get('planos_mensais', m?.plano_id); },
   valor(m) { return m.valor ?? this.plano(m)?.valor ?? 0; },
   assinantes(b) { return Store.de('mensalistas', b.id); },
   doTelefone(b, tel) {
+    if (!Planos.tem(b, 'mensalistas')) return null;
     const d = soDigitos(tel);
     return d ? Store.de('mensalistas', b.id).find(m => m.cliente_tel === d && m.status === 'ativo') || null : null;
   },
@@ -272,7 +275,7 @@ const Orcamento = {
 /* ---------------- pagamento pelo app (na demonstração é simulado) ---------------- */
 const Pagamentos = {
   config(b) { return { modo: 'desligado', sinal: 100, cancelamento: 'credito', falta: 'retem', chave_pix: '', prazo_credito: 90, ...(b.pagamento || {}) }; },
-  ativo(b) { return this.config(b).modo !== 'desligado'; },
+  ativo(b) { return this.config(b).modo !== 'desligado' && Planos.tem(b, 'pagamento_app'); },
   aCobrar(b, total) { return round2(total * (this.config(b).sinal || 100) / 100); },
   simular(forma, valor) {
     const vel = typeof Cliente !== 'undefined' ? Cliente.vel : 1;
@@ -345,7 +348,7 @@ const Mensagens = {
   // chamado pelo Store sempre que um agendamento é criado ou alterado
   async aoMudarAgendamento(antes, a) {
     const b = Store.get('barbearias', a.barbearia_id);
-    if (!b) return;
+    if (!b || !Planos.tem(b, 'lembretes')) return;
     const cfg = this.config(b);
     if (!cfg.ativo) return;
     const v = this.vars(b, a), agora = this.agoraTxt(), x = Store.get('barbeiros', a.barbeiro_id);
@@ -385,7 +388,7 @@ const Mensagens = {
   // lembretes de mensalidade (gerados quando o painel abre)
   async mensalidades(b) {
     const cfg = this.config(b);
-    if (!cfg.ativo) return;
+    if (!cfg.ativo || !Planos.tem(b, 'cobranca_auto')) return;
     const hoje = Datas.hoje(), ja = new Set(Store.de('mensagens', b.id).map(m => `${m.tipo}|${m.ref}`));
     for (const c of Store.de('mensalidades', b.id).filter(c => c.status === 'pendente')) {
       const m = Store.get('mensalistas', c.mensalista_id);

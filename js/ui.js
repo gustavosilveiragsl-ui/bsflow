@@ -206,7 +206,7 @@ const UI = {
 
   // estrutura das telas de gestão: menu lateral (computador) e barra inferior (celular)
   casca({ marca, itens, ativo, conteudo, rodapeLateral = '' }) {
-    const item = (i, cls) => `<a href="${i.href}" class="${cls} ${i.id === ativo ? 'on' : ''}" ${i.id === ativo ? 'aria-current="page"' : ''}>${ic(i.icone)}<span>${esc(i.rotulo)}</span></a>`;
+    const item = (i, cls) => `<a href="${i.href}" class="${cls} ${i.id === ativo ? 'on' : ''} ${i.bloq ? 'bloq' : ''}" ${i.id === ativo ? 'aria-current="page"' : ''} ${i.bloq ? 'title="Não está no seu plano"' : ''}>${ic(i.icone)}<span>${esc(i.rotulo)}</span>${i.bloq ? `<i class="nav-cad">${ic('cadeado')}</i>` : ''}</a>`;
     return `<div class="casca">
       <aside class="lateral"><div class="lateral-marca">${marca}</div>
         <nav class="lateral-nav">${itens.filter(i => !i.soCelular).map(i => item(i, 'nav-item')).join('')}</nav>

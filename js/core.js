@@ -8,7 +8,7 @@
    (ver docs/BANCO.md), então trocar o Store depois não mexe nas telas.
    ============================================================ */
 
-const APP = { nome: 'BSFlow', versao: '0.2.0' };
+const APP = { nome: 'BSFlow', versao: '0.3.0' };
 
 const DIAS = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
 const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
@@ -102,7 +102,7 @@ const Modelos = {
   barbearia(d = {}) {
     return {
       tipo: 'barbearia', status: 'teste', bloqueada: false, motivo_bloqueio: '', liberado_ate: null, teste_ate: null,
-      plano_id: 'pl_solo', valor_mensal: 49.9, dia_vencimento: 10,
+      plano_id: 'pl_solo', valor_mensal: 24.99, dia_vencimento: 10,
       responsavel: '', email: '', whatsapp: '', cidade: '', endereco: '', maps_url: '', instagram: '',
       logo: null, cor: '#c9a227', boas_vindas: 'Aqui você marca seu horário em poucos toques, a qualquer hora do dia.',
       horario: copia(HORARIO_PADRAO),
@@ -140,7 +140,7 @@ const Modelos = {
    para trocar por chamadas ao Supabase sem mudar as telas.
    ============================================================ */
 const Store = {
-  CHAVE: 'bsflow:dados:v2',
+  CHAVE: 'bsflow:dados:v3',
   db: null,
   ouvinte: null, // tela atual: chamada quando outra aba muda os dados
 
@@ -187,6 +187,32 @@ window.addEventListener('storage', e => {
   try { Store.db = JSON.parse(e.newValue); } catch (_) { return; }
   if (Store.ouvinte) Store.ouvinte();
 });
+
+/* ============================================================
+   Planos de venda — o que cada plano libera
+   ============================================================ */
+const RECURSOS = {
+  promocoes: { nome: 'Promoções', desc: 'Descontos com prazo e regras, divulgados no chat.', icone: 'brilho' },
+  fidelidade: { nome: 'Fidelidade', desc: 'Cartão fidelidade com desconto automático na visita certa.', icone: 'estrela' },
+  mensalistas: { nome: 'Mensalistas', desc: 'Planos mensais para os clientes, com agendamento de vários horários de uma vez.', icone: 'coroa' },
+  lembretes: { nome: 'Lembretes no WhatsApp', desc: 'Confirmação e lembrete automático do horário para o cliente e aviso ao profissional.', icone: 'mensagem' },
+  pagamento_app: { nome: 'Cobrança direto no app', desc: 'O cliente paga por PIX ou cartão na hora de agendar, e a mensalidade também.', icone: 'cartao' },
+  cobranca_auto: { nome: 'Cobrança automática no WhatsApp', desc: 'Lembrete e cobrança da mensalidade dos mensalistas, sem precisar mandar à mão.', icone: 'recibo' },
+  suporte: { nome: 'Suporte humanizado', desc: 'Atendimento com pessoa pelo WhatsApp.', icone: 'usuarios' }
+};
+const Planos = {
+  de(b) { return Store.get('planos', b?.plano_id); },
+  // em teste o estabelecimento experimenta tudo; depois vale o que o plano libera
+  tem(b, recurso) {
+    if (!b) return false;
+    if (b.status === 'teste') return true;
+    return !!this.de(b)?.recursos?.includes(recurso);
+  },
+  // o plano mais barato que tem o recurso (para mostrar "disponível no plano X")
+  minimoPara(recurso) {
+    return Store.t('planos').filter(p => p.recursos?.includes(recurso)).sort((p, q) => p.preco - q.preco)[0] || null;
+  }
+};
 
 /* ============================================================
    Cobrança — situação de cada barbearia na plataforma

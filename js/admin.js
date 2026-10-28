@@ -221,16 +221,18 @@ const Admin = {
 
   v_planos() {
     const bbs = Store.t('barbearias').filter(b => b.status !== 'inativa');
-    return `<div class="topo"><div><h1>Planos</h1><p class="sub">O valor de cada cliente pode ser ajustado na ficha dele</p></div>
+    return `<div class="topo"><div><h1>Planos</h1><p class="sub">O que cada plano libera no painel do cliente. O valor de cada cliente pode ser ajustado na ficha dele.</p></div>
         <div class="topo-acoes"><button class="btn pri" data-a="novo-plano">${ic('mais')} Novo plano</button></div></div>
-      <div class="plano-grade">${Store.t('planos').map(p => {
+      <div class="aviso-faixa info">${ic('info')}<span>No período de teste o cliente experimenta todos os recursos. Quando vira ativo, vale o que o plano dele libera.</span></div>
+      <div class="plano-grade">${Store.t('planos').slice().sort((x, y) => x.preco - y.preco).map(p => {
         const n = bbs.filter(b => b.plano_id === p.id).length;
         return `<div class="plano">
           <h3>${ic(p.max_barbeiros === 0 ? 'diamante' : p.max_barbeiros === 1 ? 'usuario' : 'usuarios')} ${esc(p.nome)}</h3>
           <div class="preco">${dinheiro(p.preco)} <small>/mês</small></div>
           <p class="muted">${esc(p.descricao)}</p>
           <ul><li>${ic('check')} ${p.max_barbeiros ? `Até ${p.max_barbeiros} profissiona${p.max_barbeiros > 1 ? 'is' : 'l'}` : 'Profissionais sem limite'}</li>
-            <li>${ic('check')} Agendamento por chat ilimitado</li><li>${ic('check')} Catálogo com fotos e faturamento</li></ul>
+            <li>${ic('check')} Agendamento pelo chat, agenda e clientes</li><li>${ic('check')} Catálogo com fotos, faturamento e fechar o dia</li>
+            ${Object.entries(RECURSOS).map(([k, r]) => p.recursos?.includes(k) ? `<li>${ic('check')} ${esc(r.nome)}</li>` : `<li class="fora">${ic('x')} ${esc(r.nome)}</li>`).join('')}</ul>
           <p class="muted" style="font-size:13px">${n} cliente${n === 1 ? '' : 's'} neste plano</p>
           <div class="acoes"><button class="btn peq" data-a="editar-plano" data-id="${p.id}">${ic('lapis')} Editar</button></div>
         </div>`;
@@ -613,14 +615,17 @@ const Admin = {
         <div class="grade-form"><label class="campo"><span>Preço (R$/mês)</span><input name="preco" inputmode="decimal" value="${numBR(p?.preco || 0)}"></label>
         <label class="campo"><span>Máximo de profissionais</span><input name="max" type="number" min="0" value="${p?.max_barbeiros ?? 1}"><small>0 = sem limite</small></label></div>
         <label class="campo"><span>Descrição</span><input name="descricao" value="${esc(p?.descricao || '')}"></label>
-        ${p ? '<p class="ajuda">Mudar o preço vale para clientes novos. Os atuais mantêm o valor deles.</p>' : ''}
+        <div class="campo"><span>O que o plano libera <small>(agenda, chat, clientes, catálogo e faturamento estão em todos)</small></span>
+          <div class="lista-chaves">${Object.entries(RECURSOS).map(([k, r]) => `<label class="chave"><input type="checkbox" name="rec" value="${k}" ${p?.recursos?.includes(k) ? 'checked' : ''}><i></i><span>${esc(r.nome)}<small class="muted" style="display:block">${esc(r.desc)}</small></span></label>`).join('')}</div></div>
+        ${p ? '<p class="ajuda">Mudar o preço vale para clientes novos. Os atuais mantêm o valor deles. Os recursos mudam na hora para todos do plano.</p>' : ''}
       </form>`,
       rodape: `${p && !emUso ? `<button class="btn perigo-txt esq" id="del-plano">${ic('lixo')} Excluir</button>` : ''}<button class="btn" data-fechar>Cancelar</button><button class="btn pri" id="salvar-plano">Salvar</button>`
     });
     $('#salvar-plano', m.el).onclick = async () => {
       const d = UI.form($('#f-plano', m.el));
       if (!d.nome) return UI.toast('Dê um nome ao plano.', 'erro');
-      await Store.salvar('planos', { ...(p ? { id } : { id: uid('pl_') }), nome: d.nome, preco: lerDinheiro(d.preco), max_barbeiros: Math.max(0, Number(d.max) || 0), descricao: d.descricao });
+      await Store.salvar('planos', { ...(p ? { id } : { id: uid('pl_') }), nome: d.nome, preco: lerDinheiro(d.preco), max_barbeiros: Math.max(0, Number(d.max) || 0), descricao: d.descricao,
+        recursos: $$('[name="rec"]:checked', m.el).map(i => i.value) });
       m.fechar();
       this.depois();
     };

@@ -780,3 +780,19 @@ button.nav-item { border: 0; background: none; width: 100%; text-align: left; fo
 .folha-membro b { display: block; font-size: 15.5px; }
 .folha-membro small { color: var(--c-muted); font-size: 13px; }
 .chat-aviso { margin: 6px 0; padding: 10px 14px; border-radius: 14px; background: rgba(250, 204, 21, .1); color: #fde68a; font-size: 14px; display: flex; gap: 10px; }
+
+/* planos e preços na página inicial */
+.home-planos { margin-top: 40px; }
+.home-planos h2 { color: #fff; font-size: 24px; margin: 0 0 6px; }
+.home-planos-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-top: 16px; }
+.home-plano { background: #1d1914; border: 1px solid #2c261f; border-radius: 20px; padding: 22px; display: flex; flex-direction: column; gap: 10px; }
+.home-plano.destaque { border-color: var(--accent); }
+.hp-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hp-topo h3 { color: #fff; margin: 0; font-size: 18px; }
+.hp-preco b { color: #fff; font-size: 30px; letter-spacing: -.02em; }
+.hp-preco small { color: var(--side-muted); margin-left: 3px; }
+.home-plano ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.home-plano li { display: flex; gap: 8px; align-items: flex-start; color: var(--side-text); font-size: 14px; }
+.home-plano li .i { width: 16px; height: 16px; color: var(--accent); flex: none; margin-top: 2px; }
+.home-plano li.fora { color: #6f675c; }
+.home-plano li.fora .i { color: #4d463d; }

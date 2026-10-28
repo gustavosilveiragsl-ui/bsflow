@@ -90,12 +90,12 @@ const Painel = {
     const itens = this.eDono() ? [
       { id: 'agenda', rotulo: 'Agenda', icone: 'calendario', href: this.h('agenda') },
       { id: 'clientes', rotulo: 'Clientes', icone: 'usuarios', href: this.h('clientes') },
-      { id: 'mensalistas', rotulo: 'Mensalistas', icone: 'coroa', href: this.h('mensalistas') },
-      { id: 'promocoes', rotulo: 'Promoções', icone: 'brilho', href: this.h('promocoes'), soComputador: true },
+      { id: 'mensalistas', rotulo: 'Mensalistas', icone: 'coroa', href: this.h('mensalistas'), recurso: 'mensalistas' },
+      { id: 'promocoes', rotulo: 'Promoções', icone: 'brilho', href: this.h('promocoes'), soComputador: true, recurso: 'promocoes' },
       { id: 'catalogo', rotulo: 'Catálogo', icone: 'tesoura', href: this.h('catalogo'), soComputador: true },
       { id: 'equipe', rotulo: 'Equipe', icone: 'usuario', href: this.h('equipe'), soComputador: true },
       { id: 'faturamento', rotulo: 'Faturamento', icone: 'carteira', href: this.h('faturamento') },
-      { id: 'mensagens', rotulo: 'Mensagens', icone: 'mensagem', href: this.h('mensagens'), soComputador: true },
+      { id: 'mensagens', rotulo: 'Mensagens', icone: 'mensagem', href: this.h('mensagens'), soComputador: true, recurso: ['lembretes', 'cobranca_auto'] },
       { id: 'ajustes', rotulo: 'Ajustes', icone: 'ajustes', href: this.h('ajustes'), soComputador: true },
       { id: 'mais', rotulo: 'Mais', icone: 'menu', href: this.h('mais'), soCelular: true }
     ] : [
@@ -104,6 +104,7 @@ const Painel = {
       { id: 'faturamento', rotulo: 'Meus ganhos', icone: 'carteira', href: this.h('faturamento') },
       { id: 'mais', rotulo: 'Mais', icone: 'menu', href: this.h('mais'), soCelular: true }
     ];
+    for (const i of itens) if (i.recurso) i.bloq = ![].concat(i.recurso).some(r => Planos.tem(b, r));
     const logo = b.logo ? `<img src="${esc(b.logo)}" alt="">` : ic('tesoura');
     const marca = `<a class="marca" href="${this.h('agenda')}"><span class="marca-icone">${logo}</span><span class="marca-txt"><b>${esc(b.nome)}</b><small>${eu ? 'Painel do profissional' : 'Painel de gestão'}</small></span></a>`;
     const quem = eu ? { nome: eu.nome, foto: eu.foto, cor: eu.cor, papel: 'Profissional' } : { nome: b.responsavel || 'Dono', foto: null, cor: '#3a3229', papel: 'Dono / gerência' };
@@ -112,7 +113,7 @@ const Painel = {
     // guarda a rolagem para a tela não pular quando chega um agendamento novo
     const cal = $('#cal-wrap'), rol = { y: window.scrollY, top: cal?.scrollTop, left: cal?.scrollLeft, aba: this._abaPintada, dia: this._diaPintado };
     const conteudo = `<div class="barra-celular">${marca}<a class="btn-icone" href="${this.h('mais')}" aria-label="Mais opções">${UI.avatar(quem.nome, quem.foto, quem.cor, 'p')}</a></div>
-      ${this.avisoSituacao()}${this['v_' + this.aba]()}`;
+      ${this.avisoSituacao()}${this.telaDoPlano() || this['v_' + this.aba]()}`;
     this.app.innerHTML = UI.casca({ marca, itens, ativo: this.aba, conteudo, rodapeLateral: rodape });
     const mesmaTela = rol.aba === this.aba && rol.dia === this.dia;
     if (mesmaTela) window.scrollTo(0, rol.y);
@@ -950,8 +951,9 @@ const Painel = {
           <label class="campo"><span>PIN do dono (4 números)</span><input name="pin_dono" data-pin inputmode="numeric" value="${esc(b.pin_dono)}"></label>
         </div></div>
         <div class="card" id="assinatura"><div class="card-cab"><div><h3>Assinatura ${APP.nome}</h3><p>Plano ${esc(plano?.nome || '—')} · ${dinheiro(b.valor_mensal)}/mês · vence todo dia ${b.dia_vencimento}</p></div>${UI.badge(s.texto, s.tom)}</div>
+          ${this.resumoPlano()}
           ${cobs.length ? `<div class="linhas">${cobs.map(c => `<div class="linha"><div class="linha-txt"><b>${cap(Datas.nomeMes(c.referencia))}</b><small>vence ${Datas.br(c.vencimento)}${c.pago_em ? ` · pago em ${Datas.br(c.pago_em)}` : ''}</small></div><div class="linha-fim"><b>${dinheiro(c.valor)}</b>${c.status === 'paga' ? UI.badge('Paga', 'ok') : c.status === 'cancelada' ? UI.badge('Cancelada', 'neutro') : c.vencimento < Datas.hoje() ? UI.badge('Vencida', 'ruim') : UI.badge('A vencer', 'info')}</div></div>`).join('')}</div>` : '<p class="muted">Nenhuma mensalidade ainda.</p>'}
-          <div class="acoes" style="margin-top:12px"><button type="button" class="btn peq" data-a="copiar" data-v="${esc(cfg.chave_pix)}">${ic('copiar')} Copiar chave PIX</button><a class="btn peq" href="${linkWhats(cfg.suporte_whatsapp, `Olá! Sou responsável por ${b.nome} e queria falar sobre a minha assinatura.`)}" target="_blank" rel="noopener">${ic('mensagem')} Falar com o suporte</a></div></div>
+          <div class="acoes" style="margin-top:12px"><button type="button" class="btn peq" data-a="copiar" data-v="${esc(cfg.chave_pix)}">${ic('copiar')} Copiar chave PIX</button><a class="btn peq" href="${linkWhats(cfg.suporte_whatsapp, `Olá! Sou responsável por ${b.nome} e queria falar sobre a minha assinatura.`)}" target="_blank" rel="noopener">${ic('mensagem')} Falar com o suporte</a><button type="button" class="btn peq" data-a="ver-planos">${ic('diamante')} Comparar planos</button></div></div>
         <div class="salvar-barra"><button class="btn pri grande">${ic('check')} Salvar ajustes</button></div>
       </form>`;
   },
@@ -976,11 +978,14 @@ const Painel = {
 
   v_mais() {
     const b = this.b, link = UI.linkCliente(b);
-    const it = (href, icone, rot, extra = '') => `<a href="${href}" ${extra}>${ic(icone)}<span>${rot}</span>${ic('direita')}</a>`;
+    const it = (href, icone, rot, extra = '', rec = null) => `<a href="${href}" ${extra}>${ic(icone)}<span>${rot}</span>${rec && ![].concat(rec).some(r => Planos.tem(b, r)) ? `<i class="nav-cad">${ic('cadeado')}</i>` : ''}${ic('direita')}</a>`;
     return `<div class="topo"><div><h1>Mais</h1><p class="sub">${esc(b.nome)}</p></div></div>
       <div class="card" style="padding:4px 16px"><div class="mais-lista">
-        ${this.eDono() ? it(this.h('promocoes'), 'brilho', 'Promoções') + it(this.h('clientes/fidelidade'), 'estrela', 'Fidelidade') + it(this.h('catalogo'), 'tesoura', 'Catálogo de serviços e produtos')
-          + it(this.h('equipe'), 'usuario', 'Equipe') + it(this.h('mensagens'), 'mensagem', 'Mensagens automáticas (WhatsApp)') + it(this.h('ajustes'), 'ajustes', 'Ajustes e pagamento pelo app') + it(this.h('ajustes'), 'recibo', 'Assinatura e mensalidade') : ''}
+        ${this.eDono() ? it(this.h('promocoes'), 'brilho', 'Promoções', '', 'promocoes') + it(this.h('clientes/fidelidade'), 'estrela', 'Fidelidade', '', 'fidelidade') + it(this.h('catalogo'), 'tesoura', 'Catálogo de serviços e produtos')
+          + it(this.h('equipe'), 'usuario', 'Equipe') + it(this.h('mensagens'), 'mensagem', 'Mensagens automáticas (WhatsApp)', '', ['lembretes', 'cobranca_auto']) + it(this.h('ajustes'), 'ajustes', 'Ajustes e pagamento pelo app') + it(this.h('ajustes'), 'recibo', 'Assinatura e mensalidade')
+          + `<button data-a="ver-planos">${ic('diamante')}<span>Planos do ${APP.nome}</span>${ic('direita')}</button>`
+          + (Planos.tem(b, 'suporte') ? it(linkWhats(Store.db.config.suporte_whatsapp, `Olá! Sou de ${b.nome} (plano Premium) e preciso de ajuda com o ${APP.nome}.`), 'usuarios', 'Suporte humanizado (WhatsApp)', 'target="_blank" rel="noopener"')
+            : `<button data-a="bloq-recurso" data-v="suporte">${ic('usuarios')}<span>Suporte humanizado (WhatsApp)</span><i class="nav-cad">${ic('cadeado')}</i>${ic('direita')}</button>`) : ''}
         <button data-a="instalar-app">${ic('baixar')}<span>Instalar o app no celular</span>${ic('direita')}</button>
         <button data-a="ativar-notif">${ic('info')}<span>Ativar notificações</span>${ic('direita')}</button>
         ${it('#/' + b.slug, 'externo', 'Abrir minha página de agendamento', 'target="_blank"')}

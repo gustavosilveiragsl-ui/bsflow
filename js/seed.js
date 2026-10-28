@@ -18,9 +18,9 @@ const Seed = {
         msg_atraso: 'Olá, {responsavel}! Aqui é do {app}. A mensalidade de {estabelecimento} ({referencia}), no valor de {valor}, venceu em {vencimento} e ainda está em aberto. Para evitar o bloqueio da agenda, pague pelo PIX: {pix}. Se já pagou, é só me mandar o comprovante.'
       },
       planos: [
-        { id: 'pl_solo', nome: 'Solo', preco: 49.9, max_barbeiros: 1, descricao: 'Para quem trabalha sozinho.' },
-        { id: 'pl_equipe', nome: 'Equipe', preco: 89.9, max_barbeiros: 4, descricao: 'Até 4 profissionais na agenda.' },
-        { id: 'pl_premium', nome: 'Premium', preco: 149.9, max_barbeiros: 0, descricao: 'Profissionais sem limite.' }
+        { id: 'pl_solo', nome: 'Básico', preco: 24.99, max_barbeiros: 1, descricao: 'Para quem trabalha sozinho.', recursos: [] },
+        { id: 'pl_equipe', nome: 'Equipe', preco: 49.99, max_barbeiros: 3, descricao: 'Para a equipe crescer e o cliente voltar.', recursos: ['promocoes', 'fidelidade', 'mensalistas', 'lembretes'] },
+        { id: 'pl_premium', nome: 'Premium', preco: 79.99, max_barbeiros: 0, descricao: 'Tudo, com cobrança pelo app e suporte humanizado.', recursos: ['promocoes', 'fidelidade', 'mensalistas', 'lembretes', 'pagamento_app', 'cobranca_auto', 'suporte'] }
       ],
       barbearias: [], cobrancas: [], barbeiros: [], servicos: [], produtos: [],
       clientes: [], agendamentos: [], bloqueios: [], vendas: [],
@@ -52,7 +52,7 @@ const Seed = {
       id: 'bb_navalha', slug: 'navalha-de-ouro', nome: 'Barbearia Navalha de Ouro', status: 'ativa',
       responsavel: 'Marcos Vieira', email: 'contato@navalhadeouro.com.br', whatsapp: '21987654321',
       cidade: 'Niterói - RJ', endereco: 'Rua Moreira César, 245 — Icaraí, Niterói - RJ', instagram: 'navalhadeouro',
-      plano_id: 'pl_equipe', valor_mensal: 89.9, dia_vencimento: 10, criado_em: Datas.soma(hoje, -230) + 'T10:00:00Z',
+      plano_id: 'pl_premium', valor_mensal: 79.99, dia_vencimento: 10, criado_em: Datas.soma(hoje, -230) + 'T10:00:00Z',
       cor: '#c9a227', pin_dono: '1234',
       boas_vindas: 'Corte de respeito, café passado na hora e o futebol na TV.',
       horario: { 0: [], 1: [['09:00', '20:00']], 2: [['09:00', '20:00']], 3: [['09:00', '20:00']], 4: [['09:00', '20:00']], 5: [['09:00', '20:00']], 6: [['08:00', '18:00']] },
@@ -96,11 +96,11 @@ const Seed = {
     limparConflitos(db, nav.id);
     extrasNavalha(db, rnd, nav, svNav, pdNav, bbNav);
 
-    // ---- 2. Rei do Corte: em dia, mensalidade vence em 2 dias ----
+    // ---- 2. Rei do Corte: em dia, mensalidade vence em 2 dias (plano Equipe) ----
     const rei = add('barbearias', Modelos.barbearia({
       id: 'bb_rei', slug: 'rei-do-corte', nome: 'Rei do Corte', status: 'ativa',
       responsavel: 'Anderson Lima', email: 'anderson@reidocorte.com', whatsapp: '21976543210', cidade: 'Rio de Janeiro - RJ',
-      endereco: 'Av. Amaral Peixoto, 1.020 — Centro', plano_id: 'pl_premium', valor_mensal: 149.9,
+      endereco: 'Av. Amaral Peixoto, 1.020 — Centro', plano_id: 'pl_equipe', valor_mensal: 49.99,
       dia_vencimento: Number(Datas.soma(hoje, 2).slice(8)), criado_em: Datas.soma(hoje, -150) + 'T10:00:00Z', cor: '#dc2626', pin_dono: '1234'
     }));
     historico(rei, 5, { pularAtual: true });
@@ -112,7 +112,7 @@ const Seed = {
     const dom = add('barbearias', Modelos.barbearia({
       id: 'bb_dom', slug: 'dom-barbearia', nome: 'Dom Barbearia', status: 'ativa',
       responsavel: 'Felipe Andrade', email: 'felipe.dom@gmail.com', whatsapp: '21965432109', cidade: 'São Gonçalo - RJ',
-      endereco: 'Rua Dr. Nilo Peçanha, 88 — Alcântara', plano_id: 'pl_solo', valor_mensal: 49.9,
+      endereco: 'Rua Dr. Nilo Peçanha, 88 — Alcântara', plano_id: 'pl_solo', valor_mensal: 24.99,
       dia_vencimento: Number(vDom.slice(8)), criado_em: Datas.soma(hoje, -120) + 'T10:00:00Z', cor: '#0ea5e9', pin_dono: '1234'
     }));
     historico(dom, 4, { pularAtual: true });
@@ -124,7 +124,7 @@ const Seed = {
     const fino = add('barbearias', Modelos.barbearia({
       id: 'bb_fino', slug: 'espaco-lumiere', nome: 'Espaço Lumière', tipo: 'salao', status: 'teste', teste_ate: Datas.soma(hoje, 5),
       responsavel: 'Camila Rocha', email: 'camila@espacolumiere.com.br', whatsapp: '21954321098', cidade: 'Maricá - RJ',
-      endereco: 'Rua Ribeiro de Almeida, 12 — Centro, Maricá', plano_id: 'pl_equipe', valor_mensal: 89.9, dia_vencimento: 15,
+      endereco: 'Rua Ribeiro de Almeida, 12 — Centro, Maricá', plano_id: 'pl_equipe', valor_mensal: 49.99, dia_vencimento: 15,
       criado_em: Datas.soma(hoje, -9) + 'T10:00:00Z', cor: '#db2777', pin_dono: '1234',
       boas_vindas: 'Cabelo, unhas e sobrancelha com hora marcada e sem espera.'
     }));
@@ -134,7 +134,7 @@ const Seed = {
     const bairro = add('barbearias', Modelos.barbearia({
       id: 'bb_bairro', slug: 'do-bairro', nome: 'Barbearia do Bairro', status: 'ativa',
       responsavel: 'Sérgio Ramos', email: 'sergioramos@hotmail.com', whatsapp: '21943210987', cidade: 'Itaboraí - RJ',
-      endereco: 'Rua Vinte e Dois de Maio, 300', plano_id: 'pl_solo', valor_mensal: 49.9, dia_vencimento: 5,
+      endereco: 'Rua Vinte e Dois de Maio, 300', plano_id: 'pl_solo', valor_mensal: 24.99, dia_vencimento: 5,
       criado_em: Datas.soma(hoje, -200) + 'T10:00:00Z', cor: '#16a34a', pin_dono: '1234'
     }));
     historico(bairro, 6);
@@ -147,7 +147,7 @@ const Seed = {
     const old = add('barbearias', Modelos.barbearia({
       id: 'bb_old', slug: 'old-school', nome: 'Old School Barber Shop', status: 'inativa',
       responsavel: 'Ricardo Nunes', email: 'ricardo@oldschool.com', whatsapp: '21932109876', cidade: 'Niterói - RJ',
-      endereco: 'Rua Gavião Peixoto, 50 — Icaraí', plano_id: 'pl_equipe', valor_mensal: 89.9, dia_vencimento: 20,
+      endereco: 'Rua Gavião Peixoto, 50 — Icaraí', plano_id: 'pl_equipe', valor_mensal: 49.99, dia_vencimento: 20,
       criado_em: Datas.soma(hoje, -300) + 'T10:00:00Z', cor: '#a16207', pin_dono: '1234', obs: 'Cancelou: fechou a unidade.'
     }));
     historico(old, 9);

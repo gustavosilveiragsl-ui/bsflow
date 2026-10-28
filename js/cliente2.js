@@ -107,7 +107,7 @@ Object.assign(Cliente, {
       if (m) await this.bot(`Esse horário é do seu plano. Restam <b>${Mensal.restantes(b, m, ym)}</b> atendimento(s) em ${MESES[+ym.slice(5) - 1]}.`);
     }
     const cfg = Mensagens.config(b);
-    if (cfg.ativo && ag.cliente_tel && (cfg.lembrete_antes || cfg.lembrete_vespera))
+    if (cfg.ativo && Planos.tem(b, 'lembretes') && ag.cliente_tel && (cfg.lembrete_antes || cfg.lembrete_vespera))
       await this.bot(`Você vai receber a confirmação e um lembrete no WhatsApp${cfg.lembrete_antes ? ` ${cfg.lembrete_antes} minutos antes do horário` : ' na véspera'}.`, { espera: 400 });
     if (!PWA.instalado()) {
       const notif = 'Notification' in window && Notification.permission === 'default';

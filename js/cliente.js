@@ -535,7 +535,7 @@ const Cliente = {
     await this.bot(`Horários livres para <b>${rel}</b>${['hoje', 'amanhã'].includes(rel) ? ` (${Datas.brCurta(data)})` : ''}:`);
     const grupos = [['Manhã', s => s.ini < 720], ['Tarde', s => s.ini >= 720 && s.ini < 1080], ['Noite', s => s.ini >= 1080]];
     // horários em que alguma promoção vale (sem contar as que exigem pagamento antecipado, avisadas depois)
-    const promoNo = ini => !sel.remarcar && sel.servicos.some(s => Store.de('promocoes', b.id).some(p => !p.criterios?.antecipado && Promocoes.vale(p, 'servicos', s.id, { data, ini, online: true, primeiraVisita: true, bruto: Infinity }) && (p.criterios?.dias?.length || p.criterios?.hora_ini != null || p.criterios?.hora_fim != null)));
+    const promoNo = ini => !sel.remarcar && Planos.tem(b, 'promocoes') && sel.servicos.some(s => Store.de('promocoes', b.id).some(p => !p.criterios?.antecipado && Promocoes.vale(p, 'servicos', s.id, { data, ini, online: true, primeiraVisita: true, bruto: Infinity }) && (p.criterios?.dias?.length || p.criterios?.hora_ini != null || p.criterios?.hora_fim != null)));
     const comPromo = slots.some(s => promoNo(s.ini));
     const html = `<div class="widget w-horas">${grupos.map(([nome, f]) => {
       const g = slots.map((s, i) => [s, i]).filter(([s]) => f(s));

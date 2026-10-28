@@ -215,7 +215,7 @@ Object.assign(Painel, {
     return topo + abas + (this.mensAba === 'planos' ? this.mensPlanos() : this.mensAba === 'cobrancas' ? this.mensCobrancas() : this.mensClientes());
   },
   avisoMensalistas() {
-    if (!this.eDono()) return '';
+    if (!this.eDono() || !Planos.tem(this.b, 'mensalistas')) return '';
     const atr = Mensal.assinantes(this.b).filter(m => m.status === 'ativo' && Mensal.situacao(this.b, m).cod === 'atrasado');
     if (!atr.length) return '';
     return `<div class="aviso-faixa ruim">${ic('alerta')}<span><b>${atr.length} mensalista${atr.length > 1 ? 's' : ''}</b> com mensalidade em atraso: ${esc(atr.slice(0, 3).map(m => primeiroNome(m.cliente_nome)).join(', '))}${atr.length > 3 ? '…' : ''}.</span><a class="btn peq" href="${this.h('mensalistas')}">Ver mensalistas</a></div>`;
@@ -699,7 +699,9 @@ Object.assign(Painel, {
     const [, filtro] = abas[this.msgAba] || abas.proximas;
     const lista = todas.filter(filtro).sort((p, q) => this.msgAba === 'proximas' ? p.quando.localeCompare(q.quando) : q.quando.localeCompare(p.quando)).slice(0, 80);
     const quando = q => { const [d, h] = q.split('T'); return `${cap(Datas.relativa(d))} · ${h}`; };
-    const chave = (k, rot, sub = '') => `<label class="chave"><input type="checkbox" name="${k}" ${cfg[k] ? 'checked' : ''}><i></i><span>${rot}${sub ? `<small class="muted" style="display:block">${sub}</small>` : ''}</span></label>`;
+    const temLemb = Planos.tem(b, 'lembretes'), temCob = Planos.tem(b, 'cobranca_auto');
+    const chave = (k, rot, sub = '', livre = true) => `<label class="chave ${livre ? '' : 'travada'}"><input type="checkbox" name="${k}" ${cfg[k] && livre ? 'checked' : ''} ${livre ? '' : 'disabled'}><i></i><span>${rot}${sub ? `<small class="muted" style="display:block">${sub}</small>` : ''}</span></label>`;
+    const trava = r => `<button type="button" class="trava-linha" data-a="bloq-recurso" data-v="${r}">${ic('cadeado')}<span>${esc(RECURSOS[r].nome)}: disponível no plano ${esc(Planos.minimoPara(r)?.nome || 'superior')}</span><b>Quero</b></button>`;
     return `<div class="topo"><div><h1>Mensagens automáticas</h1><p class="sub">WhatsApp para clientes e equipe: confirmação, lembretes e cobrança</p></div></div>
       <div class="aviso-faixa info">${ic('info')}<span>Na demonstração as mensagens ficam nesta caixa de saída, com o horário em que sairiam. Na versão oficial elas saem sozinhas pelo WhatsApp do estabelecimento.</span></div>
       <div class="duas-col">
@@ -711,14 +713,16 @@ Object.assign(Painel, {
         <form class="card" id="f-msg"><div class="card-cab"><h3>O que enviar</h3></div>
           <div class="lista-chaves">
             ${chave('ativo', '<b>Mensagens automáticas ligadas</b>')}
-            ${chave('confirmacao', 'Confirmação quando o cliente agenda ou remarca')}
-            ${chave('lembrete_vespera', 'Lembrete na véspera (18h)')}
-            <label class="campo"><span>Lembrete antes do horário</span><select name="lembrete_antes">${[[0, 'Não enviar'], [15, '15 minutos antes'], [30, '30 minutos antes'], [60, '1 hora antes'], [120, '2 horas antes']].map(([v, t]) => `<option value="${v}" ${+cfg.lembrete_antes === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
-            ${chave('cancelamento', 'Aviso ao cliente quando o estabelecimento cancela')}
-            ${chave('aviso_profissional', 'Aviso ao profissional de novo agendamento e cancelamento')}
-            ${chave('resumo_dia', 'Resumo do dia para cada profissional (de manhã)')}
-            <label class="campo"><span>Lembrete da mensalidade</span><select name="mensal_antes">${[[0, 'Não enviar'], [1, '1 dia antes'], [2, '2 dias antes'], [3, '3 dias antes'], [5, '5 dias antes']].map(([v, t]) => `<option value="${v}" ${+cfg.mensal_antes === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
-            ${chave('mensal_atraso', 'Cobrança no dia seguinte ao vencimento')}
+            ${temLemb ? '' : trava('lembretes')}
+            ${chave('confirmacao', 'Confirmação quando o cliente agenda ou remarca', '', temLemb)}
+            ${chave('lembrete_vespera', 'Lembrete na véspera (18h)', '', temLemb)}
+            <label class="campo ${temLemb ? '' : 'travada'}"><span>Lembrete antes do horário</span><select name="lembrete_antes" ${temLemb ? '' : 'disabled'}>${[[0, 'Não enviar'], [15, '15 minutos antes'], [30, '30 minutos antes'], [60, '1 hora antes'], [120, '2 horas antes']].map(([v, t]) => `<option value="${v}" ${+cfg.lembrete_antes === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+            ${chave('cancelamento', 'Aviso ao cliente quando o estabelecimento cancela', '', temLemb)}
+            ${chave('aviso_profissional', 'Aviso ao profissional de novo agendamento e cancelamento', '', temLemb)}
+            ${chave('resumo_dia', 'Resumo do dia para cada profissional (de manhã)', '', temLemb)}
+            ${temCob ? '' : trava('cobranca_auto')}
+            <label class="campo ${temCob ? '' : 'travada'}"><span>Lembrete da mensalidade</span><select name="mensal_antes" ${temCob ? '' : 'disabled'}>${[[0, 'Não enviar'], [1, '1 dia antes'], [2, '2 dias antes'], [3, '3 dias antes'], [5, '5 dias antes']].map(([v, t]) => `<option value="${v}" ${+cfg.mensal_antes === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+            ${chave('mensal_atraso', 'Cobrança no dia seguinte ao vencimento', '', temCob)}
           </div>
           <div class="acoes" style="margin-top:14px"><button type="button" class="btn" data-a="msg-textos">${ic('lapis')} Editar os textos</button><button class="btn pri">${ic('check')} Salvar</button></div>
         </form>
@@ -726,9 +730,10 @@ Object.assign(Painel, {
   },
   async salvarMensagens(f) {
     const b = this.b, cfg = Mensagens.config(b);
-    await Store.salvar('barbearias', { id: b.id, mensagens: { ...cfg, ativo: f.ativo.checked, confirmacao: f.confirmacao.checked, lembrete_vespera: f.lembrete_vespera.checked,
-      lembrete_antes: +f.lembrete_antes.value, cancelamento: f.cancelamento.checked, aviso_profissional: f.aviso_profissional.checked, resumo_dia: f.resumo_dia.checked,
-      mensal_antes: +f.mensal_antes.value, mensal_atraso: f.mensal_atraso.checked } });
+    const lemb = Planos.tem(b, 'lembretes') ? { confirmacao: f.confirmacao.checked, lembrete_vespera: f.lembrete_vespera.checked, lembrete_antes: +f.lembrete_antes.value,
+      cancelamento: f.cancelamento.checked, aviso_profissional: f.aviso_profissional.checked, resumo_dia: f.resumo_dia.checked } : {};
+    const cob = Planos.tem(b, 'cobranca_auto') ? { mensal_antes: +f.mensal_antes.value, mensal_atraso: f.mensal_atraso.checked } : {};
+    await Store.salvar('barbearias', { id: b.id, mensagens: { ...cfg, ativo: f.ativo.checked, ...lemb, ...cob } });
     this.b = Store.get('barbearias', b.id);
     UI.toast('Mensagens salvas.');
     this.pintar();
@@ -758,6 +763,13 @@ Object.assign(Painel, {
   /* ============================ AJUSTES: pagamento e app ============================ */
   secoesAjustesExtras() {
     const pg = Pagamentos.config(this.b);
+    const pix = `<label class="campo inteiro"><span>Chave PIX do estabelecimento <small>(aparece nas cobranças de mensalidade)</small></span><input name="pg_pix" value="${esc(pg.chave_pix)}" placeholder="CNPJ, e-mail, telefone ou chave aleatória"></label>`;
+    const app = `<div class="card"><div class="card-cab"><div><h3>App no celular e notificações</h3><p>Instale o painel como app e receba avisos de novos agendamentos</p></div></div>
+        <div class="acoes"><button type="button" class="btn" data-a="instalar-app">${ic('baixar')} Instalar o app</button><button type="button" class="btn" data-a="ativar-notif">${ic('info')} Ativar notificações neste aparelho</button><button type="button" class="btn fantasma" data-a="testar-notif">Testar</button></div>
+        <p class="ajuda" style="margin-top:10px">${PWA.textoSituacao()}</p></div>`;
+    if (!Planos.tem(this.b, 'pagamento_app')) return `<div class="card" id="pagamento"><div class="card-cab"><div><h3>Pagamento</h3><p>Como o cliente paga você</p></div></div>
+        <button type="button" class="trava-linha" data-a="bloq-recurso" data-v="pagamento_app" style="margin-bottom:14px">${ic('cadeado')}<span>Cobrança direto no app (PIX e cartão no chat): disponível no plano ${esc(Planos.minimoPara('pagamento_app')?.nome || 'superior')}</span><b>Quero</b></button>
+        <div class="grade-form">${pix}</div></div>${app}`;
     const radio = (nome, atual, ops) => `<div class="opcoes-grade">${ops.map(([v, t]) => `<label class="op-btn" style="cursor:pointer"><input type="radio" name="${nome}" value="${v}" ${String(atual) === String(v) ? 'checked' : ''}> ${t}</label>`).join('')}</div>`;
     return `<div class="card" id="pagamento"><div class="card-cab"><div><h3>Pagamento pelo app</h3><p>PIX ou cartão no chat, antes do atendimento</p></div></div>
         <div class="aviso-faixa info" style="margin-bottom:14px">${ic('info')}<span>Na demonstração o pagamento é simulado. Na versão oficial o dinheiro cai direto na conta do estabelecimento.</span></div>
@@ -767,16 +779,81 @@ Object.assign(Painel, {
           <div class="grade-form">
             <label class="campo"><span>Se o cliente cancelar no prazo</span><select name="pg_cancelamento"><option value="credito" ${pg.cancelamento === 'credito' ? 'selected' : ''}>O valor vira crédito para o próximo</option><option value="devolucao" ${pg.cancelamento === 'devolucao' ? 'selected' : ''}>O valor é devolvido</option></select></label>
             <label class="campo"><span>Se o cliente faltar</span><select name="pg_falta"><option value="retem" ${pg.falta === 'retem' ? 'selected' : ''}>O valor fica com o estabelecimento</option><option value="credito" ${pg.falta === 'credito' ? 'selected' : ''}>O valor vira crédito</option></select></label>
-            <label class="campo inteiro"><span>Chave PIX do estabelecimento <small>(aparece nas cobranças de mensalidade)</small></span><input name="pg_pix" value="${esc(pg.chave_pix)}" placeholder="CNPJ, e-mail, telefone ou chave aleatória"></label>
+            ${pix}
           </div>
         </div></div>
-      <div class="card"><div class="card-cab"><div><h3>App no celular e notificações</h3><p>Instale o painel como app e receba avisos de novos agendamentos</p></div></div>
-        <div class="acoes"><button type="button" class="btn" data-a="instalar-app">${ic('baixar')} Instalar o app</button><button type="button" class="btn" data-a="ativar-notif">${ic('info')} Ativar notificações neste aparelho</button><button type="button" class="btn fantasma" data-a="testar-notif">Testar</button></div>
-        <p class="ajuda" style="margin-top:10px">${PWA.textoSituacao()}</p></div>`;
+      ${app}`;
   },
   lerAjustesExtras(f) {
-    const d = UI.form(f);
-    return { pagamento: { ...Pagamentos.config(this.b), modo: d.pg_modo || 'desligado', sinal: +d.pg_sinal || 100, cancelamento: d.pg_cancelamento, falta: d.pg_falta, chave_pix: d.pg_pix } };
+    const d = UI.form(f), pg = Pagamentos.config(this.b);
+    if (!f.querySelector('[name="pg_modo"]')) return { pagamento: { ...pg, chave_pix: d.pg_pix ?? pg.chave_pix } };
+    return { pagamento: { ...pg, modo: d.pg_modo || 'desligado', sinal: +d.pg_sinal || 100, cancelamento: d.pg_cancelamento, falta: d.pg_falta, chave_pix: d.pg_pix } };
+  },
+
+  /* ============================ PLANOS DE VENDA ============================ */
+  // a tela aberta precisa de um recurso que o plano não tem? mostra o convite em vez da tela
+  telaDoPlano() {
+    if (!this.eDono()) return '';
+    const b = this.b;
+    const precisa = this.aba === 'mensalistas' ? ['mensalistas'] : this.aba === 'promocoes' ? ['promocoes']
+      : this.aba === 'mensagens' ? ['lembretes', 'cobranca_auto'] : this.aba === 'clientes' && this.cliAba === 'fidelidade' ? ['fidelidade'] : null;
+    if (!precisa || precisa.some(r => Planos.tem(b, r))) return '';
+    return this.v_bloqueado(precisa[0]);
+  },
+  linkMudarPlano(plano, recurso) {
+    const b = this.b;
+    return linkWhats(Store.db.config.suporte_whatsapp, `Olá! Sou responsável por ${b.nome} (${UI.linkCliente(b)}) e quero mudar para o plano ${plano.nome} do ${APP.nome}${recurso ? ` para usar ${RECURSOS[recurso].nome}` : ''}.`);
+  },
+  v_bloqueado(recurso) {
+    const b = this.b, r = RECURSOS[recurso], alvo = Planos.minimoPara(recurso), atual = Planos.de(b);
+    const titulo = { mensalistas: 'Mensalistas', promocoes: 'Promoções', fidelidade: 'Fidelidade', lembretes: 'Mensagens automáticas' }[recurso] || r.nome;
+    const exemplos = {
+      mensalistas: ['Planos mensais com valor fixo e atendimentos liberados no mês', 'O cliente agenda todos os horários do mês de uma vez pelo chat', 'Controle de quem pagou, quem está em atraso e cobrança pelo WhatsApp'],
+      promocoes: ['Descontos com prazo, dias da semana e horários', 'O chat divulga as promoções sozinho para o cliente', 'Preço promocional já aparece no agendamento'],
+      fidelidade: ['Cartão fidelidade: a cada X visitas, um prêmio', 'O desconto entra sozinho no atendimento certo', 'Lista de quem está perto do prêmio para chamar de volta'],
+      lembretes: ['Confirmação do horário no WhatsApp do cliente', 'Lembrete na véspera e minutos antes: menos faltas', 'Aviso ao profissional de novo agendamento e cancelamento']
+    }[recurso] || [r.desc];
+    return `<div class="topo"><div><h1>${esc(titulo)}</h1><p class="sub">${esc(r.desc)}</p></div></div>
+      ${recurso === 'fidelidade' ? this.abasClientes() : ''}
+      <div class="card bloqueado">
+        <span class="bloq-icone">${ic('cadeado')}</span>
+        <h2>${esc(r.nome)} não está no seu plano${atual ? ` ${esc(atual.nome)}` : ''}</h2>
+        ${alvo ? `<p>Disponível a partir do plano <b>${esc(alvo.nome)}</b>, por <b>${dinheiro(alvo.preco)}/mês</b>.</p>` : '<p>Fale com o suporte para liberar.</p>'}
+        <ul class="bloq-lista">${exemplos.map(t => `<li>${ic('check')}<span>${esc(t)}</span></li>`).join('')}</ul>
+        <div class="acoes" style="justify-content:center">${alvo ? `<a class="btn pri" href="${this.linkMudarPlano(alvo, recurso)}" target="_blank" rel="noopener">${ic('mensagem')} Quero esse recurso</a>` : ''}<button class="btn" data-a="ver-planos" data-v="${recurso}">${ic('diamante')} Comparar planos</button></div>
+      </div>`;
+  },
+  // lista curta do que o plano atual libera (cartão Assinatura em Ajustes)
+  resumoPlano() {
+    const b = this.b, p = Planos.de(b);
+    if (!p) return '';
+    const teste = b.status === 'teste';
+    return `<div class="plano-resumo">
+        <span class="plano-item">${ic('usuario')} ${p.max_barbeiros ? `Até ${p.max_barbeiros} profissiona${p.max_barbeiros > 1 ? 'is' : 'l'}` : 'Profissionais sem limite'}</span>
+        ${Object.entries(RECURSOS).map(([k, r]) => `<span class="plano-item ${p.recursos?.includes(k) ? '' : 'fora'}">${ic(p.recursos?.includes(k) ? 'check' : 'cadeado')} ${esc(r.nome)}</span>`).join('')}
+      </div>${teste ? `<p class="ajuda" style="margin:8px 0 4px">No período de teste tudo fica liberado para você experimentar. Depois vale o que o plano ${esc(p.nome)} inclui.</p>` : ''}`;
+  },
+  verPlanos(recurso) {
+    const b = this.b, atual = Planos.de(b), planos = Store.t('planos').filter(p => p.ativo !== false).sort((p, q) => p.preco - q.preco);
+    const linha = (ok, txt) => `<li class="${ok ? '' : 'fora'}">${ic(ok ? 'check' : 'x')}<span>${txt}</span></li>`;
+    UI.modal({
+      titulo: `Planos do ${APP.nome}`, classe: 'largo',
+      corpo: `<div class="planos-grade">${planos.map(p => {
+        const eAtual = p.id === atual?.id, destaque = recurso && p.recursos?.includes(recurso) && Planos.minimoPara(recurso)?.id === p.id;
+        return `<div class="plano-card ${eAtual ? 'atual' : ''} ${destaque ? 'destaque' : ''}">
+          <div class="plano-topo"><h3>${esc(p.nome)}</h3>${eAtual ? UI.badge('Seu plano', 'ok') : destaque ? UI.badge('Libera o que você quer', 'info') : ''}</div>
+          <div class="plano-preco"><b>${dinheiro(p.preco)}</b><small>/mês</small></div>
+          <p class="muted">${esc(p.descricao || '')}</p>
+          <ul class="plano-lista">
+            ${linha(true, p.max_barbeiros ? `Até ${p.max_barbeiros} profissiona${p.max_barbeiros > 1 ? 'is' : 'l'}` : 'Profissionais sem limite')}
+            ${linha(true, 'Agendamento pelo chat, agenda, clientes, catálogo e faturamento')}
+            ${Object.entries(RECURSOS).map(([k, r]) => linha(p.recursos?.includes(k), esc(r.nome))).join('')}
+          </ul>
+          ${eAtual ? '<button class="btn" disabled>Plano atual</button>' : `<a class="btn ${destaque || (!recurso && p.preco > (atual?.preco || 0)) ? 'pri' : ''}" href="${this.linkMudarPlano(p, recurso && p.recursos?.includes(recurso) ? recurso : null)}" target="_blank" rel="noopener">${ic('mensagem')} Quero este plano</a>`}
+        </div>`;
+      }).join('')}</div>
+      <p class="ajuda" style="margin-top:12px">A mudança de plano é feita pelo suporte. O valor novo vale a partir da próxima mensalidade.</p>`
+    });
   },
 
   /* ============================ cliques das telas novas ============================ */
@@ -813,6 +890,8 @@ Object.assign(Painel, {
       case 'instalar-app': return PWA.instalar();
       case 'ativar-notif': { const ok = await PWA.pedirPermissao(); UI.toast(ok ? 'Notificações ativadas neste aparelho.' : 'As notificações foram bloqueadas no navegador.', ok ? 'ok' : 'erro'); return this.pintar(); }
       case 'testar-notif': return PWA.notificar('BSFlow', 'As notificações deste aparelho estão funcionando.', UI.linkPainel(this.b));
+      case 'ver-planos': return this.verPlanos();
+      case 'bloq-recurso': return this.verPlanos(el.dataset.v);
     }
   }
 });
