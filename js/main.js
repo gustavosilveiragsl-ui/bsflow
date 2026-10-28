@@ -16,6 +16,10 @@ const Rotas = {
     document.body.className = '';
     UI.aplicarCor(null);
     const p = this.partes();
+    const base = location.href.split('#')[0];
+    PWA.configurar(p[0] === 'admin'
+      ? { nome: `${APP.nome} · Administração`, curto: `${APP.nome} Admin`, texto: 'BS', inicio: base + '#/admin' }
+      : { nome: APP.nome, curto: APP.nome, texto: 'BS', inicio: base });
     try {
       if (!p.length) return Home.render(app);
       if (p[0] === 'admin') return Admin.render(app, p.slice(1));

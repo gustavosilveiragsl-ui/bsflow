@@ -32,16 +32,24 @@ const Painel = {
     this.sessao = this.lerSessao(b);
     if (this.sessao?.tipo === 'barbeiro') { const x = this.eu(); if (!x || x.ativo === false) this.sessao = null; }
     if (!this.sessao) return this.login();
-    const permitidas = this.eDono() ? ['agenda', 'clientes', 'catalogo', 'equipe', 'faturamento', 'ajustes', 'mais'] : ['agenda', 'clientes', 'faturamento', 'mais'];
+    const permitidas = this.eDono()
+      ? ['agenda', 'clientes', 'mensalistas', 'promocoes', 'catalogo', 'equipe', 'faturamento', 'mensagens', 'ajustes', 'mais']
+      : ['agenda', 'clientes', 'faturamento', 'mais'];
     this.aba = permitidas.includes(sub[0]) ? sub[0] : 'agenda';
     this.sub = sub;
     if (this.aba === 'catalogo' && ['servicos', 'produtos'].includes(sub[1])) this.catAba = sub[1];
+    this.cliAba = this.aba === 'clientes' && sub[1] === 'fidelidade' && this.eDono() ? 'fidelidade' : 'lista';
+    PWA.configurar({ nome: `${b.nome} · Gestão`, curto: 'Gestão', cor: b.cor, logo: b.logo, texto: UI.iniciaisMarca(b.nome), inicio: UI.linkPainel(b) });
+    if (this.eDono() && this._lembretesMensal !== b.id) { this._lembretesMensal = b.id; Mensagens.mensalidades(b).catch(e => console.warn(e)); }
     Store.ouvinte = () => this.mudouFora();
     this.pintar();
     app.onclick = e => this.clique(e);
     app.onchange = e => this.mudanca(e);
     app.oninput = e => this.digitou(e);
-    app.onsubmit = e => { if (e.target.id === 'f-aj') { e.preventDefault(); this.salvarAjustes(e.target).catch(UI.erro); } };
+    app.onsubmit = e => {
+      if (e.target.id === 'f-aj') { e.preventDefault(); this.salvarAjustes(e.target).catch(UI.erro); }
+      if (e.target.id === 'f-msg') { e.preventDefault(); this.salvarMensagens(e.target).catch(UI.erro); }
+    };
   },
 
   // outra aba (ex.: o cliente no chat) mudou os dados
@@ -52,22 +60,27 @@ const Painel = {
     UI.aplicarCor(b.cor);
     const avisos = this.novidades();
     this.pintar();
-    avisos.forEach(t => UI.toast(t, 'info'));
+    avisos.forEach(t => { UI.toast(t, 'info'); PWA.notificar(b.nome, t, UI.linkPainel(b)); });
   },
   meusAgendamentos() { const eu = this.eu(); return Store.de('agendamentos', this.b.id).filter(a => !eu || a.barbeiro_id === eu.id); },
   marcarVistos() { this.vistos = new Map(this.meusAgendamentos().map(a => [a.id, `${a.status}|${a.data}|${a.ini}`])); },
   novidades() {
-    const antes = this.vistos || new Map(), msgs = [];
-    this.novosIds = new Set();
+    const antes = this.vistos || new Map(), msgs = [], novos = new Set();
     for (const a of this.meusAgendamentos()) {
       const v = antes.get(a.id), quando = `${Datas.relativa(a.data)} às ${Datas.hhmm(a.ini)}`;
       if (v === undefined) {
-        if (a.status === 'confirmado') { msgs.push(`Novo agendamento: ${primeiroNome(a.cliente_nome)} · ${quando}`); this.novosIds.add(a.id); }
+        if (a.status === 'confirmado') { msgs.push(`Novo agendamento: ${primeiroNome(a.cliente_nome)} · ${quando}`); novos.add(a.id); }
         continue;
       }
       const [st, data, ini] = v.split('|');
       if (st === 'confirmado' && a.status === 'cancelado' && a.cancelado_por === 'cliente') msgs.push(`${primeiroNome(a.cliente_nome)} cancelou o horário de ${Datas.relativa(data)} às ${Datas.hhmm(+ini)}`);
-      else if (a.status === 'confirmado' && (data !== a.data || +ini !== a.ini)) { msgs.push(`${primeiroNome(a.cliente_nome)} remarcou para ${quando}`); this.novosIds.add(a.id); }
+      else if (a.status === 'confirmado' && (data !== a.data || +ini !== a.ini)) { msgs.push(`${primeiroNome(a.cliente_nome)} remarcou para ${quando}`); novos.add(a.id); }
+    }
+    // o destaque do horário novo fica uns segundos, mesmo que outra gravação redesenhe a agenda
+    if (novos.size) {
+      this.novosIds = new Set([...this.novosIds, ...novos]);
+      clearTimeout(this._novosTimer);
+      this._novosTimer = setTimeout(() => { this.novosIds = new Set(); }, 8000);
     }
     return msgs.slice(0, 3);
   },
@@ -77,9 +90,12 @@ const Painel = {
     const itens = this.eDono() ? [
       { id: 'agenda', rotulo: 'Agenda', icone: 'calendario', href: this.h('agenda') },
       { id: 'clientes', rotulo: 'Clientes', icone: 'usuarios', href: this.h('clientes') },
-      { id: 'catalogo', rotulo: 'Catálogo', icone: 'tesoura', href: this.h('catalogo') },
+      { id: 'mensalistas', rotulo: 'Mensalistas', icone: 'coroa', href: this.h('mensalistas') },
+      { id: 'promocoes', rotulo: 'Promoções', icone: 'brilho', href: this.h('promocoes'), soComputador: true },
+      { id: 'catalogo', rotulo: 'Catálogo', icone: 'tesoura', href: this.h('catalogo'), soComputador: true },
       { id: 'equipe', rotulo: 'Equipe', icone: 'usuario', href: this.h('equipe'), soComputador: true },
       { id: 'faturamento', rotulo: 'Faturamento', icone: 'carteira', href: this.h('faturamento') },
+      { id: 'mensagens', rotulo: 'Mensagens', icone: 'mensagem', href: this.h('mensagens'), soComputador: true },
       { id: 'ajustes', rotulo: 'Ajustes', icone: 'ajustes', href: this.h('ajustes'), soComputador: true },
       { id: 'mais', rotulo: 'Mais', icone: 'menu', href: this.h('mais'), soCelular: true }
     ] : [
@@ -220,8 +236,9 @@ const Painel = {
     const modo = this.modo || (window.innerWidth < 700 && cols.length > 1 ? 'lista' : 'grade');
     const livres = cols.reduce((n, x) => n + Agenda.horarios(b, x, dia, b.regras.intervalo || 30, { cliente: false }).filter(t => dia > hoje || t > Datas.agoraMin()).length, 0);
     return `<div class="topo"><div><h1>${eu ? 'Minha agenda' : 'Agenda'}</h1><p class="sub">${cap(Datas.longa(dia))}${dia === hoje ? ' · hoje' : ''}</p></div>
-        <div class="topo-acoes"><button class="btn" data-a="bloquear">${ic('cadeado')} Bloquear horário</button><button class="btn pri" data-a="novo-ag">${ic('mais')} Agendar</button></div></div>
-      ${pend.length ? `<div class="aviso-faixa">${ic('alerta')}<span>${pend.length} atendimento${pend.length > 1 ? 's' : ''} que já passou ainda não ${pend.length > 1 ? 'tiveram' : 'teve'} baixa. Marque como concluído ou faltou para o faturamento ficar certo.</span><button class="btn peq" data-a="ir-dia" data-d="${pend[0].data}">Ver ${Datas.brCurta(pend[0].data)}</button></div>` : ''}
+        <div class="topo-acoes"><button class="btn" data-a="bloquear">${ic('cadeado')} Bloquear</button><button class="btn" data-a="avulso">${ic('tesoura')} Sem agendamento</button><button class="btn pri" data-a="novo-ag">${ic('mais')} Agendar</button></div></div>
+      ${this.avisoMensalistas()}
+      ${pend.length ? `<div class="aviso-faixa">${ic('alerta')}<span>${pend.length} atendimento${pend.length > 1 ? 's' : ''} que já passou ainda não ${pend.length > 1 ? 'tiveram' : 'teve'} baixa. Feche o dia para o faturamento ficar certo.</span><button class="btn peq" data-a="fechar-dia" data-d="${pend[0].data}">${ic('check')} Fechar ${Datas.brCurta(pend[0].data)}</button></div>` : ''}
       <div class="agenda-barra">
         <div class="nav-dia"><button class="btn-icone" data-a="dia" data-d="-1" aria-label="Dia anterior">${ic('esquerda')}</button><button class="btn peq" data-a="ir-dia" data-d="${hoje}">Hoje</button><button class="btn-icone" data-a="dia" data-d="1" aria-label="Próximo dia">${ic('direita')}</button></div>
         <input type="date" id="escolher-dia" value="${dia}" aria-label="Escolher dia">
@@ -234,7 +251,7 @@ const Painel = {
         const fechado = cols.every(x => !Agenda.expediente(b, x, d).length);
         return `<button class="dia-btn ${d === dia ? 'on' : ''} ${d === hoje ? 'hoje' : ''} ${fechado ? 'fechado' : ''}" data-a="ir-dia" data-d="${d}"><small>${DIAS_CURTOS[Datas.dow(d)]}</small><b>${+d.slice(8)}</b><em>${n ? n : fechado ? '—' : '0'}</em></button>`;
       }).join('')}</div>
-      <div class="resumo-dia"><span>${ic('calendario')}<b>${validos.length}</b> agendamento${validos.length === 1 ? '' : 's'}</span><span>${ic('check')}<b>${concl}</b> concluído${concl === 1 ? '' : 's'}</span><span>${ic('carteira')}<b>${dinheiro(valor)}</b> ${dia < hoje ? 'no dia' : 'previsto'}</span>${dia >= hoje ? `<span>${ic('relogio')}<b>${livres}</b> horários livres</span>` : ''}</div>
+      <div class="resumo-dia"><span>${ic('calendario')}<b>${validos.length}</b> agendamento${validos.length === 1 ? '' : 's'}</span><span>${ic('check')}<b>${concl}</b> concluído${concl === 1 ? '' : 's'}</span><span>${ic('carteira')}<b>${dinheiro(valor)}</b> ${dia < hoje ? 'no dia' : 'previsto'}</span>${dia >= hoje ? `<span>${ic('relogio')}<b>${livres}</b> horários livres</span>` : ''}${dia <= hoje ? `<span class="esp"></span>${Store.de('fechamentos', b.id).some(f => f.data === dia && (f.barbeiro_id || null) === (eu?.id || null)) ? UI.badge('Dia fechado', 'ok', 'check') : ''}<button class="btn peq pri" data-a="fechar-dia" data-d="${dia}">${ic('check')} Fechar o dia</button>` : ''}</div>
       ${modo === 'grade' ? this.grade(cols, ags, dia) : this.lista(ags)}`;
   },
 
@@ -314,6 +331,7 @@ const Painel = {
         ${a.status === 'cancelado' ? `<dt>Cancelado por</dt><dd>${a.cancelado_por === 'cliente' ? 'Cliente' : 'Estabelecimento'}</dd>` : ''}
         ${a.status === 'concluido' ? `<dt>Pagamento</dt><dd>${esc(FORMAS_PAGAMENTO[a.forma_pagamento] || '—')}${a.desconto ? ` · desconto de ${dinheiro(a.desconto)}` : ''}</dd>
           ${a.produtos?.length ? `<dt>Produtos</dt><dd>${a.produtos.map(p => `${p.qtd}× ${esc(p.nome)} (${dinheiro(p.preco * p.qtd)})`).join('<br>')}</dd>` : ''}` : ''}
+        ${this.infoExtraAg(a)}
         <dt>Histórico</dt><dd>${hist.length ? `${hist.length} visita${hist.length > 1 ? 's' : ''} antes · última em ${Datas.br(hist[0].data)} (${esc(hist[0].servicos.map(s => s.nome).join(' + '))})` : 'Primeira visita'}</dd>
       </dl>
       ${a.reservas?.length && a.status === 'confirmado' ? `<div class="det-nota">${ic('sacola')}<span>Pediu para separar: <b>${a.reservas.map(p => `${p.qtd}× ${esc(p.nome)}`).join(', ')}</b></span></div>` : ''}
@@ -375,6 +393,14 @@ const Painel = {
       } catch (err) { UI.erro(err); }
     };
   },
+  // preço mostrado no agendamento do balcão (plano mensal, promoção e fidelidade já aplicados)
+  precoBalcao(sel, st, rem, f) {
+    if (rem) return dinheiro(rem.total);
+    const tel = soDigitos(f?.tel?.value || '');
+    const orc = Orcamento.calcular(this.b, sel, { data: st.data, ini: st.ini ?? 0, tel, online: false, usarCredito: false });
+    const extra = Orcamento.linhas(orc).map(l => l.rot.split(':')[0].replace(/ \(.*/, '')).join(', ');
+    return orc.total !== orc.tabela ? `<s>${dinheiro(orc.tabela)}</s> <b>${dinheiro(orc.total)}</b> (${esc(extra)})` : dinheiro(orc.total);
+  },
   mexerEstoque(produtoId, delta) {
     const p = Store.get('produtos', produtoId);
     if (p && p.estoque != null && p.estoque !== '') Store.salvar('produtos', { id: p.id, estoque: Math.max(0, Number(p.estoque) + delta) });
@@ -423,7 +449,7 @@ const Painel = {
       if (st.inicial != null) { if (!slots.includes(st.inicial)) st.encaixe = true; st.ini = st.inicial; st.inicial = null; }
       if (!st.encaixe && !slots.includes(st.ini)) st.ini = null;
       caixa.innerHTML = `${slots.length ? `<div class="horas-grade">${slots.map(t => `<button type="button" class="op-btn ${st.ini === t && !st.encaixe ? 'on' : ''}" data-hora="${t}">${Datas.hhmm(t)}</button>`).join('')}</div>` : `<p class="ajuda">${Agenda.expediente(b, x, st.data).length ? 'Sem horários livres nesse dia para essa duração.' : `${esc(primeiroNome(x.nome))} não trabalha nesse dia.`}</p>`}
-        <p class="ajuda" style="margin-top:8px">Duração: ${duracaoTxt(dur)} · ${dinheiro(Agenda.total(sel))}</p>
+        <p class="ajuda" style="margin-top:8px">Duração: ${duracaoTxt(dur)} · ${this.precoBalcao(sel, st, rem, f)}</p>
         <label class="check" style="margin-top:8px"><input type="checkbox" id="encaixe" ${st.encaixe ? 'checked' : ''}> Encaixe em outro horário</label>
         ${st.encaixe ? `<input type="time" id="hora-encaixe" class="entrada" style="max-width:170px;margin-top:8px" value="${st.ini != null ? Datas.hhmm(st.ini) : ''}">` : ''}`;
     };
@@ -443,8 +469,9 @@ const Painel = {
     m.el.oninput = e => {
       if (e.target.name === 'nome' && f.tel && !soDigitos(f.tel.value)) {
         const c = clientes.find(x => x.nome.toLowerCase() === e.target.value.trim().toLowerCase());
-        if (c) f.tel.value = fmtTel(c.telefone);
+        if (c) { f.tel.value = fmtTel(c.telefone); desenhar(); }
       }
+      if (e.target.name === 'tel' && [10, 11].includes(soDigitos(e.target.value).length)) desenhar();
     };
     $('#salvar-ag', m.el).onclick = async () => {
       try {
@@ -465,7 +492,8 @@ const Painel = {
           await Store.salvar('agendamentos', { id: rem.id, barbeiro_id: st.barbeiro, data: st.data, ini: st.ini, fim: st.ini + dur, remarcado_em: new Date().toISOString() });
           UI.toast(`Remarcado para ${Datas.curta(st.data)} às ${Datas.hhmm(st.ini)}.`);
         } else {
-          await Agenda.agendar({ b, barbeiroId: st.barbeiro, data: st.data, ini: st.ini, servicos: sel, nome: f.nome.value, telefone: tel, origem: 'balcao', obs: f.obs.value.trim(), encaixe: true });
+          const orc = Orcamento.calcular(b, sel, { data: st.data, ini: st.ini, tel, online: false, usarCredito: false });
+          await Agenda.agendar({ b, barbeiroId: st.barbeiro, data: st.data, ini: st.ini, servicos: sel, nome: f.nome.value, telefone: tel, origem: 'balcao', obs: f.obs.value.trim(), encaixe: true, extras: Orcamento.campos(orc) });
           UI.toast(`Agendado: ${Datas.curta(st.data)} às ${Datas.hhmm(st.ini)}.`);
         }
         m.fechar();
@@ -549,9 +577,11 @@ const Painel = {
     return lista.sort((p, q) => (q.proxima || q.ultima || '').localeCompare(p.proxima || p.ultima || '') || p.nome.localeCompare(q.nome));
   },
   v_clientes() {
+    if (this.cliAba === 'fidelidade') return this.v_fidelidade();
     const lista = this.dadosClientes();
     const filtros = { todos: ['Todos', () => true], marcados: ['Com horário marcado', c => c.proxima], sumidos: ['Sumidos (30+ dias)', c => c.sumido], novos: ['Novos no mês', c => c.novo] };
     return `<div class="topo"><div><h1>${this.eu() ? 'Meus clientes' : 'Clientes'}</h1><p class="sub">${lista.length} clientes · toque em um para ver o histórico</p></div></div>
+      ${this.abasClientes()}
       <div class="barra-filtros">
         <label class="busca campo"><span class="sr">Buscar</span>${ic('busca')}<input id="busca-cli" type="search" placeholder="Buscar por nome ou telefone" value="${esc(this.cliBusca)}"></label>
         <div class="fichas">${Object.entries(filtros).map(([k, [rot, f]]) => `<button class="ficha ${this.cliFiltro === k ? 'on' : ''}" data-a="filtro-cli" data-v="${k}">${rot} <span class="cont">${lista.filter(f).length}</span></button>`).join('')}</div>
@@ -564,10 +594,14 @@ const Painel = {
     const res = lista.filter(c => f(c) && (!busca || semAcento(c.nome).includes(busca) || (dig.length >= 3 && (c.tel || '').includes(dig))));
     if (!res.length) return UI.vazio('usuarios', 'Nenhum cliente encontrado');
     const mostra = res.slice(0, 150);
+    const progs = Fidelidade.programas(this.b);
     return mostra.map(c => {
       const info = c.proxima ? `Próximo: ${Datas.relativa(c.proxima)}` : c.ultima ? `Última visita há ${Datas.diff(hoje, c.ultima)} dia${Datas.diff(hoje, c.ultima) === 1 ? '' : 's'}` : 'Ainda não veio';
+      const mens = c.tel && Mensal.doTelefone(this.b, c.tel);
+      const fid = c.tel && c.visitas ? progs.map(p => ({ p, pos: Fidelidade.posicao(this.b, p, c.tel, hoje, Datas.agoraMin()) })).find(x => x.pos.feitas) : null;
+      const selos = `${mens ? UI.badge('Mensalista', 'destaque', 'coroa') : ''}${fid ? UI.badge(fid.pos.ganhaAgora ? 'Prêmio no próximo' : `${fid.pos.noCiclo}/${fid.p.a_cada}`, fid.pos.ganhaAgora ? 'ok' : 'neutro', 'estrela') : ''}`;
       return `<div class="linha clicavel" data-a="ver-cli" data-k="${esc(c.k)}">${UI.avatar(c.nome, null, '#57514a')}
-        <div class="linha-txt"><b>${esc(c.nome)}</b><small>${esc(fmtTel(c.tel) || 'sem telefone')} · ${c.visitas} visita${c.visitas === 1 ? '' : 's'}${c.faltas ? ` · ${c.faltas} falta${c.faltas > 1 ? 's' : ''}` : ''}</small></div>
+        <div class="linha-txt"><b>${esc(c.nome)} ${selos}</b><small>${esc(fmtTel(c.tel) || 'sem telefone')} · ${c.visitas} visita${c.visitas === 1 ? '' : 's'}${c.faltas ? ` · ${c.faltas} falta${c.faltas > 1 ? 's' : ''}` : ''}</small></div>
         <div class="linha-fim"><b>${dinheiro(c.gasto)}</b><small class="muted" style="font-size:12.5px">${esc(info)}</small></div></div>`;
     }).join('') + (res.length > mostra.length ? `<p class="ajuda" style="padding:12px 4px">Mostrando ${mostra.length} de ${res.length}. Use a busca para achar os outros.</p>` : '');
   },
@@ -798,7 +832,8 @@ const Painel = {
         ${this.periodo === 'custom' ? `<input type="date" class="entrada" style="width:auto" id="fat-de" value="${de}"><span class="muted">até</span><input type="date" class="entrada" style="width:auto" id="fat-ate" value="${ate}">` : ''}
         ${!eu && barbs.length > 1 ? `<select class="entrada" style="width:auto" id="fat-barb"><option value="">Toda a equipe</option>${barbs.map(x => `<option value="${x.id}" ${this.fBarbeiro === x.id ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select>` : ''}
       </div>
-      ${r.semBaixa ? `<div class="aviso-faixa">${ic('alerta')}<span>${r.semBaixa} atendimento${r.semBaixa > 1 ? 's' : ''} do período ainda sem baixa não ${r.semBaixa > 1 ? 'entram' : 'entra'} na conta. Conclua na agenda.</span></div>` : ''}
+      ${r.semBaixa ? `<div class="aviso-faixa">${ic('alerta')}<span>${r.semBaixa} atendimento${r.semBaixa > 1 ? 's' : ''} do período ainda sem baixa não ${r.semBaixa > 1 ? 'entram' : 'entra'} na conta. Feche o dia na agenda.</span></div>` : ''}
+      <p class="ajuda" style="margin:-4px 0 12px">Conta só o que foi realizado: atendimentos concluídos, vendas, mensalidades pagas e faltas em que o valor pago antecipado ficou com o estabelecimento.</p>
       <div class="kpis">
         ${eu ? kpi('Sua comissão', dinheiro(r.comissao), `${eu.comissao || 0}% sobre os serviços`, 'carteira', 'destaque') + kpi('Faturado por você', dinheiro(r.total), '', 'subindo')
              : kpi('Faturamento', dinheiro(r.total), `${r.atendimentos} atendimento${r.atendimentos === 1 ? '' : 's'}${r.vendas ? ` + ${r.vendas} venda${r.vendas > 1 ? 's' : ''}` : ''}`, 'subindo', 'destaque') + kpi('Comissões da equipe', dinheiro(r.comissao), `sobra ${dinheiro(r.total - r.comissao)}`, 'usuarios')}
@@ -806,7 +841,9 @@ const Painel = {
         ${kpi('Produtos', dinheiro(r.produtos), '', 'sacola')}
         ${kpi('Ticket médio', dinheiro(r.ticket), 'por atendimento', 'recibo')}
         ${kpi('Agendado a receber', dinheiro(r.previsto), 'horários futuros no período', 'calendario')}
-        ${kpi('Faltas', String(r.faltas), r.faltas ? `${r.cancelados} cancelamento${r.cancelados === 1 ? '' : 's'}` : `${r.cancelados} cancelamento${r.cancelados === 1 ? '' : 's'}`, 'usuario-x')}
+        ${kpi('Faltas', String(r.faltas), `${r.cancelados} cancelamento${r.cancelados === 1 ? '' : 's'}${r.faltasPagas ? ` · ${dinheiro(r.faltasPagas)} retidos` : ''}`, 'usuario-x')}
+        ${r.mensalidades ? kpi('Mensalidades recebidas', dinheiro(r.mensalidades), 'dos planos mensais', 'coroa') : ''}
+        ${r.app ? kpi('Recebido pelo app', dinheiro(r.app), 'PIX e cartão antecipados', 'cartao') : ''}
       </div>
       <div class="card"><div class="card-cab"><div><h3>${tituloGraf}</h3><p>Passe o dedo ou o mouse nas barras para ver o valor</p></div></div>${r.total ? UI.barras(graf, { cada }) : UI.vazio('grafico', 'Nada faturado nesse período')}</div>
       <div class="duas-col" style="margin-top:14px">
@@ -825,7 +862,8 @@ const Painel = {
         </tbody></table></div>` : UI.vazio('recibo', 'Nenhuma movimentação')}</div>`;
   },
   formVenda() {
-    const b = this.b, eu = this.eu(), prods = Agenda.produtos(b);
+    const b = this.b, eu = this.eu();
+    const prods = Agenda.produtos(b).map(p => { const pr = Promocoes.precoProduto(b, p); return { ...p, preco: pr.preco, original: pr.original, promo: pr.promo }; });
     if (!prods.length) return UI.toast('Cadastre produtos no Catálogo primeiro.', 'erro');
     const qtd = {};
     let forma = 'pix';
@@ -835,7 +873,7 @@ const Painel = {
     });
     const total = () => soma(prods, p => (qtd[p.id] || 0) * p.preco);
     const desenhar = () => {
-      $('#venda', m.el).innerHTML = `<div class="itens-conta">${prods.map(p => `<div class="item-conta"><span>${esc(p.nome)}<small class="muted" style="display:block;font-size:12px">${dinheiro(p.preco)}${p.estoque != null ? ` · ${p.estoque} em estoque` : ''}</small></span>
+      $('#venda', m.el).innerHTML = `<div class="itens-conta">${prods.map(p => `<div class="item-conta"><span>${esc(p.nome)}<small class="muted" style="display:block;font-size:12px">${p.promo ? `<s>${dinheiro(p.original)}</s> ${dinheiro(p.preco)} (${esc(p.promo.nome)})` : dinheiro(p.preco)}${p.estoque != null ? ` · ${p.estoque} em estoque` : ''}</small></span>
           <span class="qtd"><button type="button" data-q="${p.id}" data-d="-1" aria-label="Menos">${ic('menos')}</button><span>${qtd[p.id] || 0}</span><button type="button" data-q="${p.id}" data-d="1" aria-label="Mais">${ic('mais')}</button></span></div>`).join('')}</div>
         <div class="grade-form" style="margin-top:14px"><label class="campo"><span>Cliente <small>(opcional)</small></span><input id="venda-cli" placeholder="Venda no balcão"></label>
           <label class="campo"><span>Vendido por</span><select id="venda-barb" ${eu ? 'disabled' : ''}>${eu ? `<option value="${eu.id}">${esc(eu.nome)}</option>` : `<option value="">Balcão</option>${Agenda.barbeiros(b).map(x => `<option value="${x.id}">${esc(x.nome)}</option>`).join('')}`}</select></label></div>
@@ -907,6 +945,7 @@ const Painel = {
           <label class="campo"><span>Cliente pode marcar até</span>${sel('dias_frente', b.regras.dias_frente, [[7, '7 dias à frente'], [15, '15 dias à frente'], [30, '30 dias à frente'], [45, '45 dias à frente'], [60, '60 dias à frente']])}</label>
           <label class="campo"><span>Cancelar ou remarcar pelo chat até</span>${sel('cancelar_ate', b.regras.cancelar_ate, [[0, 'A qualquer momento'], [1, '1 hora antes'], [2, '2 horas antes'], [3, '3 horas antes'], [6, '6 horas antes'], [12, '12 horas antes'], [24, '24 horas antes']])}</label>
         </div></div>
+        ${this.secoesAjustesExtras()}
         <div class="card"><div class="card-cab"><h3>Acesso</h3></div><div class="grade-form">
           <label class="campo"><span>PIN do dono (4 números)</span><input name="pin_dono" data-pin inputmode="numeric" value="${esc(b.pin_dono)}"></label>
         </div></div>
@@ -926,7 +965,8 @@ const Painel = {
     await Store.salvar('barbearias', {
       id: b.id, nome: d.nome, whatsapp: tel, endereco: d.endereco, maps_url: d.maps_url, instagram: d.instagram.replace(/^@/, ''),
       boas_vindas: d.boas_vindas, cor: d.cor, logo: this._logo, horario, pin_dono: d.pin_dono,
-      regras: { intervalo: +d.intervalo, antecedencia: +d.antecedencia, dias_frente: +d.dias_frente, cancelar_ate: +d.cancelar_ate }
+      regras: { intervalo: +d.intervalo, antecedencia: +d.antecedencia, dias_frente: +d.dias_frente, cancelar_ate: +d.cancelar_ate },
+      ...this.lerAjustesExtras(f)
     });
     this.b = Store.get('barbearias', b.id);
     UI.aplicarCor(this.b.cor);
@@ -939,7 +979,10 @@ const Painel = {
     const it = (href, icone, rot, extra = '') => `<a href="${href}" ${extra}>${ic(icone)}<span>${rot}</span>${ic('direita')}</a>`;
     return `<div class="topo"><div><h1>Mais</h1><p class="sub">${esc(b.nome)}</p></div></div>
       <div class="card" style="padding:4px 16px"><div class="mais-lista">
-        ${this.eDono() ? it(this.h('equipe'), 'usuario', 'Equipe') + it(this.h('ajustes'), 'ajustes', 'Ajustes') + it(this.h('ajustes'), 'recibo', 'Assinatura e mensalidade') : ''}
+        ${this.eDono() ? it(this.h('promocoes'), 'brilho', 'Promoções') + it(this.h('clientes/fidelidade'), 'estrela', 'Fidelidade') + it(this.h('catalogo'), 'tesoura', 'Catálogo de serviços e produtos')
+          + it(this.h('equipe'), 'usuario', 'Equipe') + it(this.h('mensagens'), 'mensagem', 'Mensagens automáticas (WhatsApp)') + it(this.h('ajustes'), 'ajustes', 'Ajustes e pagamento pelo app') + it(this.h('ajustes'), 'recibo', 'Assinatura e mensalidade') : ''}
+        <button data-a="instalar-app">${ic('baixar')}<span>Instalar o app no celular</span>${ic('direita')}</button>
+        <button data-a="ativar-notif">${ic('info')}<span>Ativar notificações</span>${ic('direita')}</button>
         ${it('#/' + b.slug, 'externo', 'Abrir minha página de agendamento', 'target="_blank"')}
         <button data-a="copiar" data-v="${esc(link)}">${ic('copiar')}<span>Copiar link de agendamento</span>${ic('direita')}</button>
         <button data-a="sair">${ic('sair')}<span>Sair / trocar de usuário</span>${ic('direita')}</button>
@@ -972,13 +1015,19 @@ const Painel = {
         case 'concluir': return this.concluir(id);
         case 'remarcar': return this.formAg({ remarcar: Store.get('agendamentos', id) });
         case 'faltou':
-          await Store.salvar('agendamentos', { id, status: 'faltou' });
-          UI.toast('Marcado como falta.');
+          await this.marcarFalta(Store.get('agendamentos', id));
           return this.pintar();
         case 'cancelar-ag': {
           const ag = Store.get('agendamentos', id);
-          if (!await UI.confirmar(`Cancelar o horário de <b>${esc(ag.cliente_nome)}</b> (${Datas.curta(ag.data)} às ${Datas.hhmm(ag.ini)})? O horário fica livre para outro cliente.`, { titulo: 'Cancelar agendamento', ok: 'Cancelar horário', perigo: true })) return;
-          await Store.salvar('agendamentos', { id, status: 'cancelado', cancelado_por: 'barbearia', cancelado_em: new Date().toISOString() });
+          const pago = ag.pagamento?.status === 'pago', pol = Pagamentos.config(this.b).cancelamento;
+          if (!await UI.confirmar(`Cancelar o horário de <b>${esc(ag.cliente_nome)}</b> (${Datas.curta(ag.data)} às ${Datas.hhmm(ag.ini)})? O horário fica livre para outro cliente.${pago ? `<br><br>O cliente pagou ${dinheiro(ag.pagamento.valor)} pelo app: ${pol === 'devolucao' ? 'o valor será devolvido' : 'o valor vira crédito para o próximo agendamento'}.` : ''}`, { titulo: 'Cancelar agendamento', ok: 'Cancelar horário', perigo: true })) return;
+          const patch = { id, status: 'cancelado', cancelado_por: 'barbearia', cancelado_em: new Date().toISOString() };
+          if (pago) {
+            patch.pagamento = { ...ag.pagamento, status: pol === 'devolucao' ? 'devolvido' : 'credito' };
+            if (pol !== 'devolucao') await Creditos.lancar(this.b, { tel: ag.cliente_tel, nome: ag.cliente_nome, valor: ag.pagamento.valor, origem: 'cancelamento', agendamento_id: ag.id });
+          }
+          await Creditos.desfazerUso(this.b, ag.id);
+          await Store.salvar('agendamentos', patch);
           UI.toast('Agendamento cancelado.');
           this.pintar();
           if (ag.cliente_tel) {
@@ -988,15 +1037,10 @@ const Painel = {
           }
           return;
         }
-        case 'reabrir': {
-          const ag = Store.get('agendamentos', id);
-          if (ag.status !== 'concluido' && Agenda.conflitos(this.b, ag.barbeiro_id, ag.data, ag.ini, ag.fim, ag.id).length)
-            throw new Error('Esse horário já foi ocupado por outro agendamento. Crie um novo ou remarque.');
-          if (ag.status === 'concluido') for (const p of ag.produtos || []) this.mexerEstoque(p.id, p.qtd);
-          await Store.salvar('agendamentos', { id, status: 'confirmado', total_pago: null, forma_pagamento: null, valor_servicos: null, valor_produtos: null, produtos: [], desconto: 0, concluido_em: null, cancelado_por: null });
+        case 'reabrir':
+          await this.reabrirAg(Store.get('agendamentos', id));
           UI.toast('Agendamento reaberto.');
           return this.pintar();
-        }
         case 'filtro-cli': this.cliFiltro = el.dataset.v; return this.pintar();
         case 'ver-cli': return this.verCliente(el.dataset.k);
         case 'novo-item': return this.formItem();
@@ -1014,6 +1058,7 @@ const Painel = {
         }
         case 'logo': return $('#arq-logo').click();
         case 'sem-logo': this._logo = null; $('#logo-prev').innerHTML = UI.capa({}, 'servico'); return;
+        default: return this.cliqueExtra(a, el, e);
       }
     } catch (err) { UI.erro(err); }
   },

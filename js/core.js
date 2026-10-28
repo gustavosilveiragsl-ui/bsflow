@@ -140,7 +140,7 @@ const Modelos = {
    para trocar por chamadas ao Supabase sem mudar as telas.
    ============================================================ */
 const Store = {
-  CHAVE: 'bsflow:dados:v1',
+  CHAVE: 'bsflow:dados:v2',
   db: null,
   ouvinte: null, // tela atual: chamada quando outra aba muda os dados
 
@@ -166,11 +166,15 @@ const Store = {
     const agora = new Date().toISOString();
     if (!reg.id) reg = { ...reg, id: uid() };
     const i = lista.findIndex(r => r.id === reg.id);
+    const antes = i >= 0 ? { ...lista[i] } : null;
     if (i >= 0) lista[i] = { ...lista[i], ...reg, atualizado_em: agora };
     else lista.push({ criado_em: agora, ...reg });
     this.gravar();
-    return this.get(tabela, reg.id);
+    const depois = this.get(tabela, reg.id);
+    if (this.aoSalvar) await this.aoSalvar(tabela, antes, depois);
+    return depois;
   },
+  aoSalvar: null, // ganchos (mensagens automáticas) — definido em ofertas.js
   async remover(tabela, id) {
     this.db[tabela] = this.t(tabela).filter(r => r.id !== id);
     this.gravar();
@@ -354,7 +358,7 @@ const Agenda = {
 
   /* Marca (ou remarca, com id) um horário. Confere de novo se o horário está livre,
      porque outra pessoa pode ter marcado enquanto o cliente escolhia. */
-  async agendar({ b, barbeiroId, data, ini, servicos, nome, telefone, origem = 'cliente', obs = '', encaixe = false, id = null }) {
+  async agendar({ b, barbeiroId, data, ini, servicos, nome, telefone, origem = 'cliente', obs = '', encaixe = false, id = null, extras = {} }) {
     const dur = this.duracao(servicos);
     const ocupado = new Error('Esse horário acabou de ser ocupado. Escolha outro, por favor.');
     if (!Cobranca.situacao(b).acesso) throw new Error('O agendamento online está pausado no momento.');
@@ -372,9 +376,9 @@ const Agenda = {
       cliente_nome: (nome || '').trim() || 'Cliente', cliente_tel: soDigitos(telefone),
       data, ini, fim: ini + dur,
       servicos: servicos.map(({ id, nome, preco, duracao }) => ({ id, nome, preco, duracao })),
-      total: this.total(servicos), status: 'confirmado', origem, obs
+      total: this.total(servicos), status: 'confirmado', origem, obs, ...extras
     };
-    if (id) Object.assign(reg, { id, remarcado_em: new Date().toISOString() });
+    if (id) Object.assign(reg, { id, remarcado_em: new Date().toISOString(), remarcacoes: (Store.get('agendamentos', id)?.remarcacoes || 0) + 1 });
     return Store.salvar('agendamentos', reg);
   },
 
@@ -402,17 +406,38 @@ const Agenda = {
 const Financeiro = {
   comissao(barbeiro, valorServicos) { return Math.round((valorServicos * (barbeiro?.comissao || 0)) ) / 100; },
 
+  /* Só entra o que foi realizado (concluído), as vendas, as mensalidades pagas
+     e as faltas em que o cliente já tinha pago e o valor ficou com o estabelecimento. */
   movimentos(b, de, ate, barbeiroId = null) {
     const out = [];
     for (const a of Store.de('agendamentos', b.id)) {
-      if (a.status !== 'concluido' || a.data < de || a.data > ate) continue;
+      if (a.data < de || a.data > ate) continue;
       if (barbeiroId && a.barbeiro_id !== barbeiroId) continue;
+      const pagoApp = a.pagamento?.status === 'pago' ? a.pagamento.valor || 0 : 0;
+      if (a.status === 'faltou' && pagoApp && a.pagamento.retido) {
+        out.push({ tipo: 'falta', id: a.id, data: a.data, hora: a.ini, barbeiro_id: a.barbeiro_id, cliente: a.cliente_nome,
+          descricao: 'Faltou (valor pago antecipado ficou com o estabelecimento)', servicos: pagoApp, produtos: 0, total: pagoApp,
+          forma: 'app', app: pagoApp, comissaoBase: 0, itens: [], prods: [] });
+        continue;
+      }
+      if (a.status !== 'concluido') continue;
+      const cobertos = new Set(a.cobertos || []);
       const servicos = Math.max(0, (a.valor_servicos ?? a.total) - (a.desconto || 0));
+      const total = a.total_pago ?? a.total;
       out.push({
         tipo: 'atendimento', id: a.id, data: a.data, hora: a.ini, barbeiro_id: a.barbeiro_id, cliente: a.cliente_nome,
-        descricao: a.servicos.map(s => s.nome).join(' + '), servicos, produtos: a.valor_produtos || 0,
-        total: a.total_pago ?? a.total, forma: a.forma_pagamento || 'dinheiro', itens: a.servicos, prods: a.produtos || []
+        descricao: a.servicos.map(s => s.nome).join(' + ') + (cobertos.size ? ' (plano)' : ''), servicos, produtos: a.valor_produtos || 0,
+        total, forma: a.forma_pagamento || 'dinheiro', app: Math.min(pagoApp + (a.credito_usado || 0), total), comissaoBase: servicos + (a.valor_coberto || 0),
+        itens: a.servicos.filter(s => !cobertos.has(s.id)), prods: a.produtos || []
       });
+    }
+    for (const c of Store.de('mensalidades', b.id)) {
+      if (c.status !== 'paga' || !c.pago_em || c.pago_em < de || c.pago_em > ate) continue;
+      const m = Store.get('mensalistas', c.mensalista_id);
+      if (barbeiroId && m?.barbeiro_id !== barbeiroId) continue;
+      out.push({ tipo: 'mensalidade', id: c.id, data: c.pago_em, hora: 0, barbeiro_id: m?.barbeiro_id || null, cliente: m?.cliente_nome || 'Mensalista',
+        descricao: `Mensalidade ${Mensal.plano(m)?.nome || ''} (${Datas.mesCurto(c.referencia)})`, servicos: 0, produtos: 0, mensal: c.valor,
+        total: c.valor, forma: c.forma || 'pix', app: c.forma === 'app' ? c.valor : 0, comissaoBase: 0, itens: [], prods: [] });
     }
     for (const v of Store.de('vendas', b.id)) {
       if (v.data < de || v.data > ate) continue;
@@ -420,7 +445,7 @@ const Financeiro = {
       out.push({
         tipo: 'venda', id: v.id, data: v.data, hora: v.hora ?? 0, barbeiro_id: v.barbeiro_id, cliente: v.cliente || 'Venda no balcão',
         descricao: v.itens.map(i => `${i.qtd}× ${i.nome}`).join(', '), servicos: 0, produtos: v.total,
-        total: v.total, forma: v.forma, itens: [], prods: v.itens
+        total: v.total, forma: v.forma, app: 0, comissaoBase: 0, itens: [], prods: v.itens
       });
     }
     return out.sort((x, y) => (y.data + pad(y.hora)).localeCompare(x.data + pad(x.hora)));
@@ -429,21 +454,25 @@ const Financeiro = {
   resumo(b, de, ate, barbeiroId = null) {
     const movs = this.movimentos(b, de, ate, barbeiroId);
     const r = {
-      movs, total: 0, servicos: 0, produtos: 0, atendimentos: 0, vendas: 0, comissao: 0,
-      faltas: 0, cancelados: 0, previsto: 0, semBaixa: 0,
+      movs, total: 0, servicos: 0, produtos: 0, atendimentos: 0, vendas: 0, comissao: 0, mensalidades: 0, faltasPagas: 0, app: 0,
+      faltas: 0, cancelados: 0, previsto: 0, semBaixa: 0, totalAtendimentos: 0,
       porDia: {}, porBarbeiro: {}, porServico: {}, porForma: {}, porProduto: {}
     };
     const barbeiros = Object.fromEntries(Store.de('barbeiros', b.id).map(x => [x.id, x]));
     for (const m of movs) {
-      r.total += m.total; r.servicos += m.servicos; r.produtos += m.produtos;
-      if (m.tipo === 'atendimento') r.atendimentos++; else r.vendas++;
+      r.total += m.total; r.servicos += m.servicos; r.produtos += m.produtos; r.app += m.app || 0;
+      if (m.tipo === 'atendimento') { r.atendimentos++; r.totalAtendimentos += m.total; }
+      else if (m.tipo === 'venda') r.vendas++;
+      else if (m.tipo === 'mensalidade') r.mensalidades += m.total;
+      else if (m.tipo === 'falta') r.faltasPagas += m.total;
       r.porDia[m.data] = (r.porDia[m.data] || 0) + m.total;
-      r.porForma[m.forma] = (r.porForma[m.forma] || 0) + m.total;
+      if (m.app) r.porForma.app = (r.porForma.app || 0) + m.app;
+      if (m.total - (m.app || 0) > 0) r.porForma[m.forma] = (r.porForma[m.forma] || 0) + m.total - (m.app || 0);
       const pb = r.porBarbeiro[m.barbeiro_id || '-'] ||= { atendimentos: 0, servicos: 0, produtos: 0, total: 0, comissao: 0 };
       pb.total += m.total; pb.servicos += m.servicos; pb.produtos += m.produtos;
       if (m.tipo === 'atendimento') {
         pb.atendimentos++;
-        const c = this.comissao(barbeiros[m.barbeiro_id], m.servicos);
+        const c = this.comissao(barbeiros[m.barbeiro_id], m.comissaoBase ?? m.servicos);
         pb.comissao += c; r.comissao += c;
         for (const s of m.itens) { const ps = r.porServico[s.nome] ||= { qtd: 0, valor: 0 }; ps.qtd++; ps.valor += s.preco; }
       }
@@ -458,7 +487,7 @@ const Financeiro = {
         if (Datas.abs(a.data, a.fim) > agora) r.previsto += a.total; else r.semBaixa++;
       }
     }
-    r.ticket = r.atendimentos ? (r.total - soma(movs.filter(m => m.tipo === 'venda'), m => m.total)) / r.atendimentos : 0;
+    r.ticket = r.atendimentos ? r.totalAtendimentos / r.atendimentos : 0;
     return r;
   }
 };

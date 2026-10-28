@@ -22,7 +22,8 @@ const Cliente = {
   RAPIDAS: {
     agendar: ['Agendar horário', 'calendario-mais'], servicos: ['Serviços e preços', 'tesoura'], dias: ['Dias livres', 'calendario'],
     produtos: ['Produtos', 'sacola'], meus: ['Meus horários', 'relogio'], info: ['Endereço', 'pin'],
-    equipe: ['Equipe', 'usuarios'], whats: ['WhatsApp', 'mensagem'], inicio: ['Início', 'casa']
+    equipe: ['Equipe', 'usuarios'], whats: ['WhatsApp', 'mensagem'], inicio: ['Início', 'casa'],
+    promocoes: ['Promoções', 'brilho'], plano: ['Plano mensal', 'coroa'], fidelidade: ['Fidelidade', 'estrela'], instalar: ['Instalar o app', 'baixar']
   },
 
   render(app, slug) {
@@ -35,6 +36,7 @@ const Cliente = {
     }
     Object.assign(this, { b, pendente: null, fluxo: null });
     UI.aplicarCor(b.cor);
+    PWA.configurar({ nome: b.nome, curto: b.nome, cor: b.cor, logo: b.logo, texto: UI.iniciaisMarca(b.nome), inicio: UI.linkCliente(b) });
     document.title = `${b.nome} · Agende seu horário`;
     this.pausado = !Cobranca.situacao(b).acesso;
     const aberto = Agenda.abertoAgora(b);
@@ -146,13 +148,19 @@ const Cliente = {
   },
   menuRapido(primeiro = []) {
     const b = this.b;
-    const todas = ['agendar', 'servicos', 'dias', Agenda.produtos(b).length ? 'produtos' : null, 'meus', 'info', Agenda.barbeiros(b).length > 1 ? 'equipe' : null, b.whatsapp ? 'whats' : null].filter(Boolean);
+    const todas = ['agendar', Promocoes.divulgaveis(b).length ? 'promocoes' : null, Mensal.planos(b).length ? 'plano' : null, 'servicos', 'dias',
+      Agenda.produtos(b).length ? 'produtos' : null, 'meus', Fidelidade.programas(b).length ? 'fidelidade' : null, 'info',
+      Agenda.barbeiros(b).length > 1 ? 'equipe' : null, b.whatsapp ? 'whats' : null, PWA.instalado() ? null : 'instalar'].filter(Boolean);
     this.rapidas([...new Set([...primeiro, ...todas])]);
   },
   menuWidget() {
-    const b = this.b, nPd = Agenda.produtos(b).length;
+    const b = this.b, nPd = Agenda.produtos(b).length, eu = this.lembrado();
+    const promos = Promocoes.divulgaveis(b), mens = eu && Mensal.doTelefone(b, eu.tel), planos = Mensal.planos(b);
     const itens = [
-      ['agendar', 'calendario-mais', 'Agendar horário', 'Serviço, dia e hora em poucos toques', 'pri'],
+      mens ? ['plano', 'coroa', 'Agendar pelo meu plano', `${Mensal.plano(mens)?.nome}: ${Mensal.restantes(b, mens, Datas.mes(Datas.hoje()))} atendimento(s) livre(s) este mês`, 'pri'] : null,
+      ['agendar', 'calendario-mais', 'Agendar horário', 'Serviço, dia e hora em poucos toques', mens ? '' : 'pri'],
+      promos.length ? ['promocoes', 'brilho', 'Promoções', promos.length === 1 ? promos[0].nome : `${promos.length} promoções: ${promos[0].nome} e mais`] : null,
+      !mens && planos.length ? ['plano', 'coroa', 'Planos mensais', `A partir de ${dinheiro(planos[0].valor)}/mês · já sou mensalista`] : null,
       ['servicos', 'tesoura', 'Serviços e preços', `${Agenda.servicos(b, { soOnline: true }).length} serviços com foto e valor`],
       ['dias', 'calendario', 'Ver dias e horários livres', 'Confira a agenda antes de escolher'],
       nPd ? ['produtos', 'sacola', 'Produtos', `${nPd} produtos à venda aqui`] : null,
@@ -201,6 +209,9 @@ const Cliente = {
         return this.fluxoAgendar({ barbeiro: x });
       }
       case 'quero-pd': this.fecharFolha(); return this.querProduto(el.dataset.id);
+      case 'promo-usar': return this.usarPromocao(el.dataset.id);
+      case 'copiar-pix': return UI.copiar(el.dataset.v);
+      case 'notif': return this.ativarNotificacoes();
       default:
         if (this.RAPIDAS[a]) { this.eu(el.dataset.rot); return this.acao(a); }
     }
@@ -210,7 +221,8 @@ const Cliente = {
     const f = {
       agendar: () => this.fluxoAgendar(), servicos: () => this.fluxoServicos(), dias: () => this.fluxoAgendar({ calendario: true }),
       produtos: () => this.fluxoProdutos(), meus: () => this.fluxoMeus(), info: () => this.fluxoInfo(),
-      equipe: () => this.fluxoEquipe(), whats: () => this.fluxoWhats(), inicio: () => this.fluxoMenu()
+      equipe: () => this.fluxoEquipe(), whats: () => this.fluxoWhats(), inicio: () => this.fluxoMenu(),
+      promocoes: () => this.fluxoPromocoes(), plano: () => this.fluxoPlano(), fidelidade: () => this.fluxoFidelidade(), instalar: () => PWA.instalar()
     }[a];
     if (f) f();
   },
@@ -241,6 +253,10 @@ const Cliente = {
   entender(t) {
     const n = semAcento(t), tem = re => re.test(n), sv = this.servicoCitado(n);
     if (tem(/cancel|desmarc|remarc|reagend|meus horario|meu horario|marquei|agendei|meu agendamento|minha hora/)) return { a: 'meus' };
+    if (tem(/promo|desconto|oferta|cupom/)) return { a: 'promocoes' };
+    if (tem(/plano|mensal|assinatura|assinar|mensalista/)) return { a: 'plano' };
+    if (tem(/fidelidade|selo|carimbo|cartao fidel|pontos/)) return { a: 'fidelidade' };
+    if (tem(/instalar|baixar o app|aplicativo/)) return { a: 'instalar' };
     if (tem(/que horas|abre|fecha|funciona|aberto|horario de funcionamento|expediente/)) return { a: 'info' };
     if (tem(/endereco|onde fica|onde voces|localiza|como cheg|mapa|fica onde|qual o local|qual a rua/)) return { a: 'info' };
     if (tem(/barbeiro|equipe|quem corta|profission|quem atende|cabeleireir|manicure|quem faz/)) return { a: 'equipe' };
@@ -286,6 +302,7 @@ const Cliente = {
       if (b.boas_vindas) await this.bot(esc(b.boas_vindas));
       const prox = eu && Agenda.proximosDoCliente(b, eu.tel)[0];
       if (prox) await this.bot(`Você tem horário marcado <b>${Datas.relativa(prox.data)} às ${Datas.hhmm(prox.ini)}</b> com ${esc(primeiroNome(Store.get('barbeiros', prox.barbeiro_id)?.nome))}.`);
+      await this.saudacaoExtras(eu);
       await this.bot('Sou o assistente de agendamento. Como posso te ajudar?');
       this.menuWidget();
       this.menuRapido();
@@ -314,6 +331,10 @@ const Cliente = {
       const sel = { servicos: pre.servicos || null, barbeiro: pre.barbeiro, cliente: pre.cliente || null, remarcar: pre.remarcar || null, calendario: !!pre.calendario, data: null, ini: null };
       let etapa = !sel.servicos ? 'servicos' : sel.remarcar && sel.barbeiro !== undefined ? 'dia' : 'barbeiro';
       if (sel.calendario && !sel.servicos) await this.bot('Para te mostrar os horários certinhos, primeiro me diz o serviço.');
+      if (pre.promo) {
+        const crit = Promocoes.criterios(pre.promo);
+        await this.bot(`Para valer a promoção <b>${esc(pre.promo.nome)}</b> (${esc(Promocoes.rotulo(pre.promo))})${crit.length ? `: ${esc(crit.join(', '))}` : ''}, ${esc(Promocoes.periodo(pre.promo))}. O desconto entra sozinho no resumo.`);
+      }
       for (let voltas = 0; voltas < 60; voltas++) {
         if (etapa === 'servicos') {
           sel.servicos = await this.pServicos(sel.servicos);
@@ -348,14 +369,28 @@ const Cliente = {
           if (r === 'quem') { sel.cliente = null; etapa = 'quem'; continue; }
           if (r === 'barbeiro') { sel.barbeiro = undefined; etapa = 'barbeiro'; continue; }
           if (r !== 'ok') { etapa = r; continue; }
+          let pg = null;
           try {
+            let extras = {};
+            if (sel.remarcar) extras = { total: sel.remarcar.total };
+            else {
+              pg = await this.pPagamento(sel); // preço final e, se for o caso, o pagamento pelo app
+              if (pg === 'voltar') { pg = null; continue; }
+              extras = { ...Orcamento.campos(pg.orc), ...(pg.pagamento ? { pagamento: pg.pagamento } : {}) };
+            }
             const ag = await Agenda.agendar({
               b, barbeiroId: sel.barbeiro === null ? null : sel.barbeiroFinal.id, data: sel.data, ini: sel.ini, servicos: sel.servicos,
-              nome: sel.cliente.nome, telefone: sel.cliente.tel, origem: 'cliente', id: sel.remarcar?.id || null, obs: sel.remarcar?.obs || ''
+              nome: sel.cliente.nome, telefone: sel.cliente.tel, origem: 'cliente', id: sel.remarcar?.id || null, obs: sel.remarcar?.obs || '', extras
             });
+            if (pg?.orc.credito) await Creditos.lancar(b, { tel: ag.cliente_tel, nome: ag.cliente_nome, valor: -pg.orc.credito, origem: 'uso', agendamento_id: ag.id });
             return this.sucesso(ag, !!sel.remarcar);
           } catch (err) {
+            if (err === CANCELADO) throw err;
             await this.bot(esc(err.message));
+            if (pg?.pagamento) {
+              await Creditos.lancar(b, { tel: sel.cliente.tel, nome: sel.cliente.nome, valor: pg.pagamento.valor, origem: 'falha' });
+              await this.bot(`O valor pago (${dinheiro(pg.pagamento.valor)}) ficou como <b>crédito</b> para você usar no horário que escolher agora.`);
+            }
             etapa = 'hora';
           }
         }
@@ -370,7 +405,7 @@ const Cliente = {
     const m = this.add('bot', `<div class="widget w-servicos">
       <div class="w-lista">${svs.map(s => `<button type="button" class="w-sv ${marcados.has(s.id) ? 'on' : ''}" data-a="w-toggle" data-id="${s.id}" aria-pressed="${marcados.has(s.id)}">
         <span class="w-sv-foto">${UI.capa(s)}</span>
-        <span class="w-sv-txt"><b>${esc(s.nome)}</b><small>${esc(s.descricao || '')}</small></span>
+        <span class="w-sv-txt"><b>${esc(s.nome)}</b><small>${esc(s.descricao || '')}</small>${this.seloPromo(s)}</span>
         <span class="w-sv-fim"><b>${dinheiro(s.preco)}</b><small>${duracaoTxt(s.duracao)}</small><span class="w-marca">${ic('check')}</span></span></button>`).join('')}</div>
       <div class="w-rodape">${this.op(0, 'Escolha um serviço', 'w-continuar')}</div></div>`, 'com-widget');
     const w = $('.widget', m);
@@ -499,10 +534,13 @@ const Cliente = {
     const rel = Datas.relativa(data);
     await this.bot(`Horários livres para <b>${rel}</b>${['hoje', 'amanhã'].includes(rel) ? ` (${Datas.brCurta(data)})` : ''}:`);
     const grupos = [['Manhã', s => s.ini < 720], ['Tarde', s => s.ini >= 720 && s.ini < 1080], ['Noite', s => s.ini >= 1080]];
+    // horários em que alguma promoção vale (sem contar as que exigem pagamento antecipado, avisadas depois)
+    const promoNo = ini => !sel.remarcar && sel.servicos.some(s => Store.de('promocoes', b.id).some(p => !p.criterios?.antecipado && Promocoes.vale(p, 'servicos', s.id, { data, ini, online: true, primeiraVisita: true, bruto: Infinity }) && (p.criterios?.dias?.length || p.criterios?.hora_ini != null || p.criterios?.hora_fim != null)));
+    const comPromo = slots.some(s => promoNo(s.ini));
     const html = `<div class="widget w-horas">${grupos.map(([nome, f]) => {
       const g = slots.map((s, i) => [s, i]).filter(([s]) => f(s));
-      return g.length ? `<h5>${nome}</h5><div class="w-horas-grade">${g.map(([s, i]) => this.op(i, Datas.hhmm(s.ini), 'w-hora')).join('')}</div>` : '';
-    }).join('')}<div class="w-extra">${this.op(slots.length, `${ic('calendario')} Escolher outro dia`, 'w-link')}</div></div>`;
+      return g.length ? `<h5>${nome}</h5><div class="w-horas-grade">${g.map(([s, i]) => this.op(i, Datas.hhmm(s.ini), `w-hora ${promoNo(s.ini) ? 'promo' : ''}`)).join('')}</div>` : '';
+    }).join('')}${comPromo ? `<p class="w-legenda"><i></i> horário com promoção</p>` : ''}<div class="w-extra">${this.op(slots.length, `${ic('calendario')} Escolher outro dia`, 'w-link')}</div></div>`;
     return this.widget(html, [...slots.map(s => ({ valor: s, eco: Datas.hhmm(s.ini) })), { valor: 'dia', eco: 'Escolher outro dia' }], { casar: t => this.casarHora(t, slots) });
   },
   casarHora(t, slots) {
@@ -535,7 +573,7 @@ const Cliente = {
     return { nome: nomeProprio(nome), tel: this.normTel(tel) };
   },
 
-  ticket({ data, ini, servicos, barbeiro, semPref, total, dur, cliente }) {
+  ticket({ data, ini, servicos, barbeiro, semPref, total, dur, cliente, linhas = [], tabela = null, pagamento = '' }) {
     const d = Datas.parse(data), rel = Datas.relativa(data);
     return `<div class="ticket">
       <div class="ticket-topo"><div class="ticket-data"><small>${MESES_CURTOS[d.getMonth()]}</small><b>${d.getDate()}</b></div>
@@ -545,6 +583,9 @@ const Cliente = {
         <div><span>Profissional</span><b>${esc(barbeiro?.nome || '')}${semPref ? '<br><small style="color:var(--c-muted);font-weight:500">primeiro livre</small>' : ''}</b></div>
         ${cliente ? `<div><span>Cliente</span><b>${esc(cliente.nome)}<br><small style="color:var(--c-muted);font-weight:500">${esc(fmtTel(cliente.tel))}</small></b></div>` : ''}
         ${this.b.endereco ? `<div><span>Local</span><b>${esc(this.b.endereco)}</b></div>` : ''}
+        ${linhas.length && tabela != null ? `<div><span>Valor</span><b>${dinheiro(tabela)}</b></div>` : ''}
+        ${linhas.map(l => `<div class="desc"><span>${esc(l.rot)}</span><b>${dinheiro(l.valor)}</b></div>`).join('')}
+        ${pagamento ? `<div><span>Pagamento</span><b>${pagamento}</b></div>` : ''}
         <div class="tot"><span>Total</span><b>${dinheiro(total)}</b></div>
       </div></div>`;
   },
@@ -552,7 +593,9 @@ const Cliente = {
     const dur = Agenda.duracao(sel.servicos);
     await this.bot(sel.remarcar ? 'Confere a remarcação:' : 'Confere se está tudo certo:');
     const conf = sel.remarcar ? 'Confirmar remarcação' : 'Confirmar agendamento';
-    const r = await this.widget(`<div class="widget">${this.ticket({ data: sel.data, ini: sel.ini, servicos: sel.servicos, barbeiro: sel.barbeiroFinal, semPref: sel.barbeiro === null, total: Agenda.total(sel.servicos), dur, cliente: sel.cliente })}
+    const orc = sel.remarcar ? null : this.orcamento(sel);
+    const r = await this.widget(`<div class="widget">${this.ticket({ data: sel.data, ini: sel.ini, servicos: sel.servicos, barbeiro: sel.barbeiroFinal, semPref: sel.barbeiro === null,
+        total: orc ? orc.total : sel.remarcar.total, dur, cliente: sel.cliente, linhas: orc ? Orcamento.linhas(orc) : [], tabela: orc?.tabela })}
       <div class="w-botoes" style="margin-top:10px">${this.op(0, `${ic('check')} ${conf}`, 'pri')}${this.op(1, `${ic('lapis')} Alterar`)}</div></div>`,
       [{ valor: 'ok', eco: conf }, { valor: 'alterar', eco: 'Quero alterar' }],
       { casar: t => { const v = simNao(t); return v ? { valor: v.valor ? 'ok' : 'alterar' } : undefined; } });
@@ -566,12 +609,13 @@ const Cliente = {
     const b = this.b, x = Store.get('barbeiros', ag.barbeiro_id);
     this.lembrar({ nome: ag.cliente_nome, tel: ag.cliente_tel });
     await this.bot(remarcou ? `Pronto, <b>${esc(primeiroNome(ag.cliente_nome))}</b>! Seu horário foi <b>remarcado</b>.` : `Prontinho, <b>${esc(primeiroNome(ag.cliente_nome))}</b>! Seu horário está <b>confirmado</b>.`);
-    this.add('bot', `<div class="widget">${this.ticket({ data: ag.data, ini: ag.ini, servicos: ag.servicos, barbeiro: x, total: ag.total, dur: ag.fim - ag.ini, cliente: { nome: ag.cliente_nome, tel: ag.cliente_tel } })}
+    this.add('bot', `<div class="widget">${this.ticket({ data: ag.data, ini: ag.ini, servicos: ag.servicos, barbeiro: x, total: ag.total, dur: ag.fim - ag.ini, cliente: { nome: ag.cliente_nome, tel: ag.cliente_tel }, ...this.detalheAg(ag) })}
       <div class="ticket-acoes" style="padding:10px 0 0"><button type="button" class="btn-chat pri" data-a="ics" data-id="${ag.id}">${ic('calendario-ok')} Pôr na agenda</button>
       <a class="btn-chat" href="${esc(UI.mapa(b))}" target="_blank" rel="noopener">${ic('pin')} Como chegar</a></div></div>`, 'com-widget');
+    await this.posAgendamento(ag);
     const h = b.regras.cancelar_ate;
     await this.bot(`Se precisar cancelar ou remarcar, é só tocar em <b>Meus horários</b>${h ? ` (até ${h}h antes)` : ''}. Te esperamos!`);
-    this.menuRapido(['meus', 'produtos']);
+    this.menuRapido(['meus', 'produtos', PWA.instalado() ? null : 'instalar'].filter(Boolean));
   },
   baixarIcs(id) {
     const ag = Store.get('agendamentos', id);
@@ -608,7 +652,7 @@ const Cliente = {
       for (const a of prox.slice(0, 5)) {
         const x = Store.get('barbeiros', a.barbeiro_id), d = Datas.parse(a.data);
         html += `<div class="meu-ag"><div class="meu-ag-topo"><div class="ticket-data"><small>${MESES_CURTOS[d.getMonth()]}</small><b>${d.getDate()}</b></div>
-          <div><b>${cap(Datas.longa(a.data).split(',')[0])} às ${Datas.hhmm(a.ini)}</b><small>${esc(a.servicos.map(s => s.nome).join(' + '))} · ${esc(primeiroNome(x?.nome))} · ${dinheiro(a.total)}</small></div></div>
+          <div><b>${cap(Datas.longa(a.data).split(',')[0])} às ${Datas.hhmm(a.ini)}</b><small>${esc(a.servicos.map(s => s.nome).join(' + '))} · ${esc(primeiroNome(x?.nome))} · ${a.mensalista_id && !a.total ? 'pelo plano' : dinheiro(a.total)}${a.pagamento?.status === 'pago' ? ' · pago pelo app' : ''}</small></div></div>
           <div class="w-botoes">${this.op(ops.length, `${ic('calendario')} Remarcar`)}${this.op(ops.length + 1, `${ic('x')} Cancelar`, 'perigo')}</div></div>`;
         ops.push({ valor: { acao: 'remarcar', a }, eco: `Remarcar o de ${Datas.curta(a.data)}` }, { valor: { acao: 'cancelar', a }, eco: `Cancelar o de ${Datas.curta(a.data)}` });
       }
@@ -625,18 +669,34 @@ const Cliente = {
   },
   async cancelar(a) {
     if (!this.podeMexer(a)) return this.semPrazo(a, 'cancelar');
-    await this.bot(`Quer mesmo cancelar o horário de <b>${Datas.relativa(a.data)} às ${Datas.hhmm(a.ini)}</b>?`);
+    const pago = a.pagamento?.status === 'pago', pol = Pagamentos.config(this.b).cancelamento;
+    await this.bot(`Quer mesmo cancelar o horário de <b>${Datas.relativa(a.data)} às ${Datas.hhmm(a.ini)}</b>?${pago ? ` Você pagou ${dinheiro(a.pagamento.valor)} pelo app: ${pol === 'devolucao' ? 'o valor será devolvido' : 'o valor vira <b>crédito</b> para o próximo agendamento'}.` : ''}`);
     const sim = await this.widget(`<div class="widget w-botoes">${this.op(0, 'Sim, cancelar', 'perigo')}${this.op(1, 'Não, manter', 'pri')}</div>`,
       [{ valor: true, eco: 'Sim, cancelar' }, { valor: false, eco: 'Não, manter' }], { casar: simNao });
     if (!sim) { await this.bot('Beleza, seu horário continua marcado.'); return this.menuRapido(); }
     const atual = Store.get('agendamentos', a.id);
     if (!atual || atual.status !== 'confirmado') { await this.bot('Esse horário já não estava mais ativo.'); return this.menuRapido(); }
-    await Store.salvar('agendamentos', { id: a.id, status: 'cancelado', cancelado_por: 'cliente', cancelado_em: new Date().toISOString() });
-    await this.bot('Pronto, cancelado. Quer marcar outro horário?');
+    const patch = { id: a.id, status: 'cancelado', cancelado_por: 'cliente', cancelado_em: new Date().toISOString() };
+    if (pago) {
+      patch.pagamento = { ...atual.pagamento, status: pol === 'devolucao' ? 'devolvido' : 'credito' };
+      if (pol !== 'devolucao') await Creditos.lancar(this.b, { tel: a.cliente_tel, nome: a.cliente_nome, valor: a.pagamento.valor, origem: 'cancelamento', agendamento_id: a.id });
+    }
+    await Creditos.desfazerUso(this.b, a.id);
+    await Store.salvar('agendamentos', patch);
+    const saldo = Creditos.saldo(this.b, a.cliente_tel);
+    await this.bot(`Pronto, cancelado.${saldo > 0 ? ` Você tem <b>${dinheiro(saldo)} de crédito</b> aqui, que entra sozinho no próximo agendamento.` : pago && pol === 'devolucao' ? ' O valor pago será devolvido.' : ''} Quer marcar outro horário?`);
     this.menuRapido(['agendar']);
   },
   remarcar(a) {
     if (!this.podeMexer(a)) return this.semPrazo(a, 'remarcar');
+    const regra = a.mensalista_id ? Mensal.plano(Store.get('mensalistas', a.mensalista_id))?.regras?.max_remarcacoes : null;
+    if (regra != null && (a.remarcacoes || 0) >= regra) {
+      return this.rodar(async () => {
+        await this.bot(regra === 0 ? 'Pelo seu plano, os horários não podem ser remarcados pelo chat.' : `Pelo seu plano, cada horário pode ser remarcado ${regra === 1 ? 'uma vez' : `${regra} vezes`}, e esse já foi. Fala com a gente pelo WhatsApp:`);
+        this.botaoWhats(`Olá! Preciso remarcar meu horário de ${Datas.curta(a.data)} às ${Datas.hhmm(a.ini)}.`);
+        this.menuRapido(['meus']);
+      });
+    }
     const svs = a.servicos.map(s => Store.get('servicos', s.id) || s);
     const x = Store.get('barbeiros', a.barbeiro_id);
     return this.fluxoAgendar({ servicos: svs, barbeiro: x && x.ativo !== false ? x : undefined, remarcar: a, cliente: { nome: a.cliente_nome, tel: a.cliente_tel } });
@@ -644,13 +704,14 @@ const Cliente = {
 
   cardServico(s) {
     return `<div class="cc"><div class="cc-foto">${UI.capa(s)}</div><div class="cc-txt"><b>${esc(s.nome)}</b><p>${esc(s.descricao || '')}</p>
-      <div class="cc-preco"><b>${dinheiro(s.preco)}</b><small>${ic('relogio')} ${duracaoTxt(s.duracao)}</small></div></div>
+      ${this.seloPromo(s)}<div class="cc-preco"><b>${dinheiro(s.preco)}</b><small>${ic('relogio')} ${duracaoTxt(s.duracao)}</small></div></div>
       <button type="button" class="cc-btn" data-a="agendar-sv" data-id="${s.id}">${ic('calendario-mais')} Agendar</button></div>`;
   },
   cardProduto(p) {
-    const esgotado = p.estoque != null && p.estoque <= 0;
+    const esgotado = p.estoque != null && p.estoque <= 0, pr = Promocoes.precoProduto(this.b, p);
     return `<div class="cc"><div class="cc-foto">${UI.capa(p, 'produto')}</div><div class="cc-txt"><b>${esc(p.nome)}</b><p>${esc(p.descricao || '')}</p>
-      <div class="cc-preco"><b>${dinheiro(p.preco)}</b>${esgotado ? '<small>Esgotado</small>' : ''}</div></div>
+      ${pr.promo ? `<em class="w-sv-promo">${ic('brilho')} ${esc(pr.promo.nome)}</em>` : ''}
+      <div class="cc-preco"><b>${pr.promo ? `<s class="riscado">${dinheiro(pr.original)}</s> ` : ''}${dinheiro(pr.preco)}</b>${esgotado ? '<small>Esgotado</small>' : ''}</div></div>
       <button type="button" class="cc-btn" data-a="quero-pd" data-id="${p.id}" ${esgotado ? 'disabled style="opacity:.4"' : ''}>${ic('sacola')} Quero este</button></div>`;
   },
   fluxoServicos() {
@@ -685,16 +746,18 @@ const Cliente = {
     this.eu(`Quero: ${p.nome}`);
     return this.rodar(async () => {
       const eu = this.lembrado(), prox = eu ? Agenda.proximosDoCliente(this.b, eu.tel)[0] : null;
+      const pr = Promocoes.precoProduto(this.b, p, { data: prox?.data });
+      const preco = `${dinheiro(pr.preco)}${pr.promo ? ` com a promoção ${esc(pr.promo.nome)}` : ''}`;
       if (!prox) {
-        await this.bot(`O <b>${esc(p.nome)}</b> sai por <b>${dinheiro(p.preco)}</b> e você compra aqui no dia do atendimento. Se marcar um horário, depois é só pedir aqui que a gente deixa separado.`);
+        await this.bot(`O <b>${esc(p.nome)}</b> sai por <b>${preco}</b> e você compra aqui no dia do atendimento. Se marcar um horário, depois é só pedir aqui que a gente deixa separado.`);
         return this.menuRapido(['agendar', 'whats']);
       }
-      await this.bot(`Quer que a gente separe <b>${esc(p.nome)}</b> (${dinheiro(p.preco)}) para o seu horário de <b>${Datas.relativa(prox.data)} às ${Datas.hhmm(prox.ini)}</b>? Você paga lá na hora.`);
+      await this.bot(`Quer que a gente separe <b>${esc(p.nome)}</b> (${preco}) para o seu horário de <b>${Datas.relativa(prox.data)} às ${Datas.hhmm(prox.ini)}</b>? Você paga lá na hora.`);
       const sim = await this.widget(`<div class="widget w-botoes">${this.op(0, `${ic('check')} Sim, separar`, 'pri')}${this.op(1, 'Não, obrigado')}</div>`,
         [{ valor: true, eco: 'Sim, separar' }, { valor: false, eco: 'Não, obrigado' }], { casar: simNao });
       if (!sim) { await this.bot('Tranquilo!'); return this.menuRapido(); }
       const atual = Store.get('agendamentos', prox.id), res = copia(atual.reservas || []), ja = res.find(x => x.id === p.id);
-      if (ja) ja.qtd++; else res.push({ id: p.id, nome: p.nome, preco: p.preco, qtd: 1 });
+      if (ja) ja.qtd++; else res.push({ id: p.id, nome: p.nome, preco: pr.preco, qtd: 1 });
       await Store.salvar('agendamentos', { id: prox.id, reservas: res });
       await this.bot('Fechado! Vai estar separado te esperando.');
       this.menuRapido(['produtos', 'meus']);

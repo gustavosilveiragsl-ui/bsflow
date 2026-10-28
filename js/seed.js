@@ -23,7 +23,8 @@ const Seed = {
         { id: 'pl_premium', nome: 'Premium', preco: 149.9, max_barbeiros: 0, descricao: 'Profissionais sem limite.' }
       ],
       barbearias: [], cobrancas: [], barbeiros: [], servicos: [], produtos: [],
-      clientes: [], agendamentos: [], bloqueios: [], vendas: []
+      clientes: [], agendamentos: [], bloqueios: [], vendas: [],
+      promocoes: [], fidelidades: [], planos_mensais: [], mensalistas: [], mensalidades: [], creditos: [], mensagens: [], fechamentos: []
     };
     const add = (t, r) => { db[t].push(r); return r; };
 
@@ -93,6 +94,7 @@ const Seed = {
     popular(db, rnd, nav, bbNav, svNav, pdNav, { diasAtras: 75, diasFrente: 14, densidade: 0.62, clientes: 160 });
     add('bloqueios', { id: uid('bl_'), barbearia_id: nav.id, barbeiro_id: 'br_nav_1', data: Datas.soma(hoje, 2), ini: Datas.min('15:00'), fim: Datas.min('17:00'), motivo: 'Consulta médica' });
     limparConflitos(db, nav.id);
+    extrasNavalha(db, rnd, nav, svNav, pdNav, bbNav);
 
     // ---- 2. Rei do Corte: em dia, mensalidade vence em 2 dias ----
     const rei = add('barbearias', Modelos.barbearia({
