@@ -703,13 +703,15 @@ Object.assign(Painel, {
     const chave = (k, rot, sub = '', livre = true) => `<label class="chave ${livre ? '' : 'travada'}"><input type="checkbox" name="${k}" ${cfg[k] && livre ? 'checked' : ''} ${livre ? '' : 'disabled'}><i></i><span>${rot}${sub ? `<small class="muted" style="display:block">${sub}</small>` : ''}</span></label>`;
     const trava = r => `<button type="button" class="trava-linha" data-a="bloq-recurso" data-v="${r}">${ic('cadeado')}<span>${esc(RECURSOS[r].nome)}: disponível no plano ${esc(Planos.minimoPara(r)?.nome || 'superior')}</span><b>Quero</b></button>`;
     return `<div class="topo"><div><h1>Mensagens automáticas</h1><p class="sub">WhatsApp para clientes e equipe: confirmação, lembretes e cobrança</p></div></div>
-      <div class="aviso-faixa info">${ic('info')}<span>Na demonstração as mensagens ficam nesta caixa de saída, com o horário em que sairiam. Na versão oficial elas saem sozinhas pelo WhatsApp do estabelecimento.</span></div>
+      <div class="aviso-faixa info">${ic('info')}<span>${typeof Nuvem !== 'undefined' && Nuvem.ativo
+        ? 'As mensagens ficam prontas aqui, no horário certo. Toque no botão verde de cada uma para enviar pelo seu WhatsApp. O envio totalmente automático chega numa próxima atualização.'
+        : 'Na demonstração as mensagens ficam nesta caixa de saída, com o horário em que sairiam. Na versão oficial elas saem sozinhas pelo WhatsApp do estabelecimento.'}</span></div>
       <div class="duas-col">
         <div class="card"><div class="card-cab"><div><h3>Caixa de saída</h3><p>${todas.filter(m => m.status === 'agendada').length} programadas</p></div>
           <div class="seg">${Object.entries(abas).map(([k, [t]]) => `<button class="${this.msgAba === k ? 'on' : ''}" data-a="msg-aba" data-v="${k}">${t}</button>`).join('')}</div></div>
           ${lista.length ? `<div class="linhas">${lista.map(mg => `<div class="linha msg-item"><span class="avatar p" style="--av:${mg.para === 'cliente' ? '#57514a' : 'var(--accent)'}">${ic(mg.para === 'cliente' ? 'usuario' : 'loja')}</span>
             <div class="linha-txt"><b>${esc(Mensagens.ROTULOS[mg.tipo] || mg.tipo)} · ${esc(primeiroNome(mg.nome))}</b><small>${esc(mg.texto)}</small></div>
-            <div class="linha-fim"><small class="muted" style="font-size:12.5px">${quando(mg.quando)}</small>${mg.tel && mg.status !== 'cancelada' ? `<a class="btn peq" href="${linkWhats(mg.tel, mg.texto)}" target="_blank" rel="noopener" title="Enviar agora pelo WhatsApp">${ic('mensagem')}</a>` : ''}</div></div>`).join('')}</div>` : UI.vazio('mensagem', 'Nada por aqui')}</div>
+            <div class="linha-fim"><small class="muted" style="font-size:12.5px">${quando(mg.quando)}</small>${mg.tel && mg.status !== 'cancelada' ? `<a class="btn peq ${mg.status === 'agendada' ? 'ok' : ''}" href="${linkWhats(mg.tel, mg.texto)}" target="_blank" rel="noopener" title="Enviar agora pelo WhatsApp" data-a="msg-enviada" data-id="${mg.id}">${ic('mensagem')}</a>` : ''}</div></div>`).join('')}</div>` : UI.vazio('mensagem', 'Nada por aqui')}</div>
         <form class="card" id="f-msg"><div class="card-cab"><h3>O que enviar</h3></div>
           <div class="lista-chaves">
             ${chave('ativo', '<b>Mensagens automáticas ligadas</b>')}
@@ -762,11 +764,14 @@ Object.assign(Painel, {
 
   /* ============================ AJUSTES: pagamento e app ============================ */
   secoesAjustesExtras() {
-    const pg = Pagamentos.config(this.b);
+    const pg = Pagamentos.config(this.b), oficial = Pagamentos.oficial();
     const pix = `<label class="campo inteiro"><span>Chave PIX do estabelecimento <small>(aparece nas cobranças de mensalidade)</small></span><input name="pg_pix" value="${esc(pg.chave_pix)}" placeholder="CNPJ, e-mail, telefone ou chave aleatória"></label>`;
     const app = `<div class="card"><div class="card-cab"><div><h3>App no celular e notificações</h3><p>Instale o painel como app e receba avisos de novos agendamentos</p></div></div>
         <div class="acoes"><button type="button" class="btn" data-a="instalar-app">${ic('baixar')} Instalar o app</button><button type="button" class="btn" data-a="ativar-notif">${ic('info')} Ativar notificações neste aparelho</button><button type="button" class="btn fantasma" data-a="testar-notif">Testar</button></div>
         <p class="ajuda" style="margin-top:10px">${PWA.textoSituacao()}</p></div>`;
+    if (oficial) return `<div class="card" id="pagamento"><div class="card-cab"><div><h3>Pagamento</h3><p>Como o cliente paga você</p></div></div>
+        <div class="aviso-faixa info" style="margin-bottom:14px">${ic('info')}<span>O pagamento pelo app (PIX e cartão no chat, com o dinheiro caindo na sua conta do Mercado Pago) chega numa próxima atualização. Por enquanto o cliente paga no local.</span></div>
+        <div class="grade-form">${pix}</div></div>${app}`;
     if (!Planos.tem(this.b, 'pagamento_app')) return `<div class="card" id="pagamento"><div class="card-cab"><div><h3>Pagamento</h3><p>Como o cliente paga você</p></div></div>
         <button type="button" class="trava-linha" data-a="bloq-recurso" data-v="pagamento_app" style="margin-bottom:14px">${ic('cadeado')}<span>Cobrança direto no app (PIX e cartão no chat): disponível no plano ${esc(Planos.minimoPara('pagamento_app')?.nome || 'superior')}</span><b>Quero</b></button>
         <div class="grade-form">${pix}</div></div>${app}`;
@@ -891,6 +896,16 @@ Object.assign(Painel, {
       case 'ativar-notif': { const ok = await PWA.pedirPermissao(); UI.toast(ok ? 'Notificações ativadas neste aparelho.' : 'As notificações foram bloqueadas no navegador.', ok ? 'ok' : 'erro'); return this.pintar(); }
       case 'testar-notif': return PWA.notificar('BSFlow', 'As notificações deste aparelho estão funcionando.', UI.linkPainel(this.b));
       case 'ver-planos': return this.verPlanos();
+      case 'ver-ajuda': return Ajuda.abrir();
+      case 'trocar-senha': return this.trocarSenha();
+      case 'passos-ocultar': await Passos.marcar(this.b, 'oculto'); this.b = Store.get('barbearias', this.b.id); UI.toast('Primeiros passos escondidos. O guia continua em Como usar.'); return this.pintar();
+      case 'passo-feito': await Passos.marcar(this.b, el.dataset.v); this.b = Store.get('barbearias', this.b.id); return this.pintar();
+      case 'passo-divulgar': UI.copiar(UI.linkCliente(this.b)); await Passos.marcar(this.b, 'divulgar'); this.b = Store.get('barbearias', this.b.id); return this.pintar();
+      case 'msg-enviada': {
+        const mg = Store.get('mensagens', id);
+        if (mg && mg.status === 'agendada') await Store.salvar('mensagens', { id, status: 'enviada', enviada_em: Mensagens.agoraTxt() });
+        return setTimeout(() => this.pintar(), 300);
+      }
       case 'bloq-recurso': return this.verPlanos(el.dataset.v);
     }
   }

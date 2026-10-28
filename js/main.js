@@ -6,7 +6,9 @@
    #/<estab>                 página do cliente (chat)            */
 const Rotas = {
   partes() { return location.hash.replace(/^#\/?/, '').split('?')[0].split('/').filter(Boolean).map(decodeURIComponent); },
-  render() {
+  vez: 0,
+  async render() {
+    const vez = ++this.vez;
     Store.ouvinte = null;
     $$('.modal-fundo, .folha-fundo').forEach(m => m.remove());
     document.body.classList.remove('com-modal');
@@ -21,13 +23,20 @@ const Rotas = {
       ? { nome: `${APP.nome} · Administração`, curto: `${APP.nome} Admin`, texto: 'BS', inicio: base + '#/admin' }
       : { nome: APP.nome, curto: APP.nome, texto: 'BS', inicio: base });
     try {
+      if (Nuvem.ativo) {
+        app.innerHTML = '<div class="tela-carregando"><span class="pag-girando"></span> Carregando...</div>';
+        await Nuvem.preparar(p);
+        if (vez !== this.vez) return; // outra tela foi aberta enquanto carregava
+        if (!p.length) return Site.home(app);
+        if (Site[p[0]] && ['contratar', 'entrar', 'termos', 'privacidade'].includes(p[0])) return Site[p[0]](app);
+      } else if (['termos', 'privacidade'].includes(p[0])) return Site[p[0]](app);
       if (!p.length) return Home.render(app);
       if (p[0] === 'admin') return Admin.render(app, p.slice(1));
       if (p[1] === 'painel') return Painel.render(app, p[0], p.slice(2));
       return Cliente.render(app, p[0]);
     } catch (e) {
       console.error(e);
-      app.innerHTML = `<div class="tela-msg"><div><span class="grande-icone">${ic('alerta')}</span><h1>Algo deu errado</h1><p>${esc(e.message)}</p><a class="btn" href="#/">Voltar ao início</a></div></div>`;
+      app.innerHTML = `<div class="tela-msg"><div><span class="grande-icone">${ic('alerta')}</span><h1>Algo deu errado</h1><p>${esc(e.message)}</p><div class="acoes" style="justify-content:center"><button class="btn pri" onclick="Nuvem.contexto=null;Rotas.render()">Tentar de novo</button><a class="btn" href="#/">Voltar ao início</a></div></div></div>`;
     }
   }
 };

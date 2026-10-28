@@ -275,7 +275,9 @@ const Orcamento = {
 /* ---------------- pagamento pelo app (na demonstração é simulado) ---------------- */
 const Pagamentos = {
   config(b) { return { modo: 'desligado', sinal: 100, cancelamento: 'credito', falta: 'retem', chave_pix: '', prazo_credito: 90, ...(b.pagamento || {}) }; },
-  ativo(b) { return this.config(b).modo !== 'desligado' && Planos.tem(b, 'pagamento_app'); },
+  // na versão oficial fica desligado até o pagamento de verdade (Mercado Pago) entrar
+  oficial() { return typeof Nuvem !== 'undefined' && Nuvem.ativo; },
+  ativo(b) { return !this.oficial() && this.config(b).modo !== 'desligado' && Planos.tem(b, 'pagamento_app'); },
   aCobrar(b, total) { return round2(total * (this.config(b).sinal || 100) / 100); },
   simular(forma, valor) {
     const vel = typeof Cliente !== 'undefined' ? Cliente.vel : 1;
@@ -382,6 +384,8 @@ const Mensagens = {
   },
   // na demonstração, o que já passou do horário conta como enviado
   processar(b) {
+    // na versão oficial nada é marcado como enviado sozinho: o dono envia pelo botão do WhatsApp
+    if (typeof Nuvem !== 'undefined' && Nuvem.ativo) return;
     const agora = this.agoraTxt();
     for (const m of Store.de('mensagens', b.id)) if (m.status === 'agendada' && m.quando <= agora) { m.status = 'enviada'; m.enviada_em = m.quando; }
   },

@@ -33,8 +33,8 @@ const Painel = {
     if (this.sessao?.tipo === 'barbeiro') { const x = this.eu(); if (!x || x.ativo === false) this.sessao = null; }
     if (!this.sessao) return this.login();
     const permitidas = this.eDono()
-      ? ['agenda', 'clientes', 'mensalistas', 'promocoes', 'catalogo', 'equipe', 'faturamento', 'mensagens', 'ajustes', 'mais']
-      : ['agenda', 'clientes', 'faturamento', 'mais'];
+      ? ['agenda', 'clientes', 'mensalistas', 'promocoes', 'catalogo', 'equipe', 'faturamento', 'mensagens', 'ajustes', 'ajuda', 'mais']
+      : ['agenda', 'clientes', 'faturamento', 'ajuda', 'mais'];
     this.aba = permitidas.includes(sub[0]) ? sub[0] : 'agenda';
     this.sub = sub;
     if (this.aba === 'catalogo' && ['servicos', 'produtos'].includes(sub[1])) this.catAba = sub[1];
@@ -43,6 +43,7 @@ const Painel = {
     if (this.eDono() && this._lembretesMensal !== b.id) { this._lembretesMensal = b.id; Mensagens.mensalidades(b).catch(e => console.warn(e)); }
     Store.ouvinte = () => this.mudouFora();
     this.pintar();
+    if (typeof Passos !== 'undefined') Passos.boasVindas(this);
     app.onclick = e => this.clique(e);
     app.onchange = e => this.mudanca(e);
     app.oninput = e => this.digitou(e);
@@ -97,11 +98,13 @@ const Painel = {
       { id: 'faturamento', rotulo: 'Faturamento', icone: 'carteira', href: this.h('faturamento') },
       { id: 'mensagens', rotulo: 'Mensagens', icone: 'mensagem', href: this.h('mensagens'), soComputador: true, recurso: ['lembretes', 'cobranca_auto'] },
       { id: 'ajustes', rotulo: 'Ajustes', icone: 'ajustes', href: this.h('ajustes'), soComputador: true },
+      { id: 'ajuda', rotulo: 'Como usar', icone: 'info', href: this.h('ajuda'), soComputador: true },
       { id: 'mais', rotulo: 'Mais', icone: 'menu', href: this.h('mais'), soCelular: true }
     ] : [
       { id: 'agenda', rotulo: 'Minha agenda', icone: 'calendario', href: this.h('agenda') },
       { id: 'clientes', rotulo: 'Meus clientes', icone: 'usuarios', href: this.h('clientes') },
       { id: 'faturamento', rotulo: 'Meus ganhos', icone: 'carteira', href: this.h('faturamento') },
+      { id: 'ajuda', rotulo: 'Como usar', icone: 'info', href: this.h('ajuda'), soComputador: true },
       { id: 'mais', rotulo: 'Mais', icone: 'menu', href: this.h('mais'), soCelular: true }
     ];
     for (const i of itens) if (i.recurso) i.bloq = ![].concat(i.recurso).some(r => Planos.tem(b, r));
@@ -113,7 +116,7 @@ const Painel = {
     // guarda a rolagem para a tela não pular quando chega um agendamento novo
     const cal = $('#cal-wrap'), rol = { y: window.scrollY, top: cal?.scrollTop, left: cal?.scrollLeft, aba: this._abaPintada, dia: this._diaPintado };
     const conteudo = `<div class="barra-celular">${marca}<a class="btn-icone" href="${this.h('mais')}" aria-label="Mais opções">${UI.avatar(quem.nome, quem.foto, quem.cor, 'p')}</a></div>
-      ${this.avisoSituacao()}${this.telaDoPlano() || this['v_' + this.aba]()}`;
+      ${this.avisoSituacao()}${this.aba === 'agenda' && typeof Passos !== 'undefined' ? Passos.cartao(this) : ''}${this.telaDoPlano() || this['v_' + this.aba]()}`;
     this.app.innerHTML = UI.casca({ marca, itens, ativo: this.aba, conteudo, rodapeLateral: rodape });
     const mesmaTela = rol.aba === this.aba && rol.dia === this.dia;
     if (mesmaTela) window.scrollTo(0, rol.y);
@@ -135,13 +138,14 @@ const Painel = {
     const s = Cobranca.situacao(this.b), cfg = Store.db.config;
     const suporte = `<a class="btn peq" href="${linkWhats(cfg.suporte_whatsapp, `Olá! Sou responsável por ${this.b.nome} e queria falar sobre a assinatura do ${APP.nome}.`)}" target="_blank" rel="noopener">${ic('mensagem')} Falar com o suporte</a>`;
     const pix = `<button class="btn peq" data-a="copiar" data-v="${esc(cfg.chave_pix)}">${ic('copiar')} Copiar PIX</button>`;
-    if (s.cod === 'teste') return `<div class="aviso-faixa info">${ic('info')}<span>Você está no período de teste grátis: ${s.resta === 0 ? '<b>termina hoje</b>' : `faltam <b>${s.resta} dia${s.resta > 1 ? 's' : ''}</b>`} (até ${Datas.br(this.b.teste_ate)}).</span>${suporte}</div>`;
+    const pagar = c => c?.link_pagamento ? `<a class="btn peq pri" href="${esc(c.link_pagamento)}" target="_blank" rel="noopener">${ic('cartao')} Pagar agora</a>` : '';
+    if (s.cod === 'teste') return `<div class="aviso-faixa info">${ic('info')}<span>Você está no período de teste grátis: ${s.resta === 0 ? '<b>termina hoje</b>' : `faltam <b>${s.resta} dia${s.resta > 1 ? 's' : ''}</b>`} (até ${Datas.br(this.b.teste_ate)}).${this.b.primeiro_vencimento ? ` A primeira mensalidade vence em ${Datas.br(this.b.primeiro_vencimento)}.` : ''}</span>${suporte}</div>`;
     if (s.cod === 'atrasada') {
       const corte = Datas.soma(s.vencidas[0].vencimento, cfg.tolerancia_dias + 1);
       const quando = cfg.bloqueio_auto && !s.liberada ? ` Para a agenda não ser pausada, pague até <b>${Datas.br(Datas.soma(corte, -1))}</b>.` : '';
-      return `<div class="aviso-faixa ruim">${ic('alerta')}<span>Mensalidade de <b>${dinheiro(s.emAtraso)}</b> em atraso há ${s.atraso} dia${s.atraso > 1 ? 's' : ''}.${quando} PIX: <b>${esc(cfg.chave_pix)}</b></span>${pix}${suporte}</div>`;
+      return `<div class="aviso-faixa ruim">${ic('alerta')}<span>Mensalidade de <b>${dinheiro(s.emAtraso)}</b> em atraso há ${s.atraso} dia${s.atraso > 1 ? 's' : ''}.${quando} ${s.vencidas[0]?.link_pagamento ? '' : ` PIX: <b>${esc(cfg.chave_pix)}</b>`}</span>${pagar(s.vencidas[0]) || pix}${suporte}</div>`;
     }
-    if (s.cod === 'vence_logo') return `<div class="aviso-faixa">${ic('relogio')}<span>Sua mensalidade de <b>${dinheiro(s.proxima.valor)}</b> vence <b>${Datas.relativa(s.proxima.vencimento)}</b> (${Datas.br(s.proxima.vencimento)}). PIX: <b>${esc(cfg.chave_pix)}</b></span>${pix}</div>`;
+    if (s.cod === 'vence_logo') return `<div class="aviso-faixa">${ic('relogio')}<span>Sua mensalidade de <b>${dinheiro(s.proxima.valor)}</b> vence <b>${Datas.relativa(s.proxima.vencimento)}</b> (${Datas.br(s.proxima.vencimento)}).${s.proxima.link_pagamento ? ' Boleto, PIX ou cartão.' : ` PIX: <b>${esc(cfg.chave_pix)}</b>`}</span>${pagar(s.proxima) || pix}</div>`;
     return '';
   },
 
@@ -733,7 +737,9 @@ const Painel = {
         <div class="grade-form">
           <label class="campo"><span>Nome</span><input name="nome" value="${esc(x?.nome || '')}" autofocus></label>
           <label class="campo"><span>WhatsApp</span><input name="telefone" data-tel inputmode="tel" value="${esc(fmtTel(x?.telefone || ''))}"></label>
-          <label class="campo"><span>PIN de acesso (4 números)</span><input name="pin" data-pin inputmode="numeric" value="${esc(x?.pin || pinAleatorio())}"><small>Ele entra no painel e vê só a agenda dele.</small></label>
+          ${typeof Nuvem !== 'undefined' && Nuvem.ativo
+            ? `<label class="campo"><span>Senha de acesso ao painel ${x?.usuario_id ? '<small>(já tem acesso; preencha só para trocar)</small>' : '<small>(opcional)</small>'}</span><input name="senha" type="password" autocomplete="new-password" placeholder="Pelo menos 6 caracteres"><small>Ele entra pelo painel escolhendo o nome dele e vê só a agenda e os ganhos dele.</small></label>`
+            : `<label class="campo"><span>PIN de acesso (4 números)</span><input name="pin" data-pin inputmode="numeric" value="${esc(x?.pin || pinAleatorio())}"><small>Ele entra no painel e vê só a agenda dele.</small></label>`}
           <label class="campo"><span>Comissão sobre serviços (%)</span><input name="comissao" type="number" min="0" max="100" value="${x?.comissao ?? 50}"></label>
           <div class="campo inteiro"><span>Cor na agenda</span><div class="cores">${cores.map(c => `<button type="button" class="cor-op ${c === cor ? 'on' : ''}" style="background:${c}" data-cor="${c}" aria-label="Cor ${c}"></button>`).join('')}<input type="hidden" name="cor" value="${cor}"></div></div>
           <div class="campo inteiro"><span>Serviços que faz</span><div class="opcoes-grade">${svs.map(s => `<label class="op-btn" style="cursor:pointer"><input type="checkbox" name="sv" value="${s.id}" ${!x?.servicos?.length || x.servicos.includes(s.id) ? 'checked' : ''} style="accent-color:var(--accent)"> ${esc(s.nome)}</label>`).join('')}</div></div>
@@ -758,17 +764,20 @@ const Painel = {
       try {
         const nome = f.nome.value.trim();
         if (!nome) throw new Error('Informe o nome.');
-        if (!/^\d{4}$/.test(f.pin.value)) throw new Error('O PIN precisa ter 4 números.');
+        const oficial = typeof Nuvem !== 'undefined' && Nuvem.ativo;
+        if (!oficial && !/^\d{4}$/.test(f.pin.value)) throw new Error('O PIN precisa ter 4 números.');
+        if (oficial && f.senha.value && f.senha.value.length < 6) throw new Error('A senha de acesso precisa ter pelo menos 6 caracteres.');
         const marcados = $$('[name=sv]:checked', m.el).map(i => i.value);
         if (!marcados.length) throw new Error('Marque pelo menos um serviço.');
         if (f.ativo.checked && x?.ativo === false && plano?.max_barbeiros && ativos >= plano.max_barbeiros) throw new Error(`Seu plano permite até ${plano.max_barbeiros} profissionais ativos.`);
         const horario = f.proprio.checked ? UI.lerHorario(f, 'hb') : null;
-        await Store.salvar('barbeiros', {
+        const salvo = await Store.salvar('barbeiros', {
           ...(x ? { id } : { barbearia_id: b.id, ordem: Store.de('barbeiros', b.id).length }),
-          nome, telefone: soDigitos(f.telefone.value), pin: f.pin.value, comissao: Math.min(100, Math.max(0, Number(f.comissao.value) || 0)),
+          nome, telefone: soDigitos(f.telefone.value), ...(oficial ? {} : { pin: f.pin.value }), comissao: Math.min(100, Math.max(0, Number(f.comissao.value) || 0)),
           cor: f.cor.value, foto, servicos: marcados.length === svs.length ? [] : marcados, horario, ativo: f.ativo.checked
         });
-        UI.toast('Profissional salvo.');
+        if (oficial && f.senha.value) await this.acessoEquipe(salvo, f.senha.value);
+        UI.toast(oficial && f.senha.value ? `Profissional salvo. ${primeiroNome(nome)} já pode entrar no painel com a senha.` : 'Profissional salvo.');
         m.fechar();
         this.pintar();
       } catch (err) { UI.erro(err); }
@@ -947,12 +956,13 @@ const Painel = {
           <label class="campo"><span>Cancelar ou remarcar pelo chat até</span>${sel('cancelar_ate', b.regras.cancelar_ate, [[0, 'A qualquer momento'], [1, '1 hora antes'], [2, '2 horas antes'], [3, '3 horas antes'], [6, '6 horas antes'], [12, '12 horas antes'], [24, '24 horas antes']])}</label>
         </div></div>
         ${this.secoesAjustesExtras()}
-        <div class="card"><div class="card-cab"><h3>Acesso</h3></div><div class="grade-form">
-          <label class="campo"><span>PIN do dono (4 números)</span><input name="pin_dono" data-pin inputmode="numeric" value="${esc(b.pin_dono)}"></label>
-        </div></div>
+        <div class="card"><div class="card-cab"><h3>Acesso</h3></div>${typeof Nuvem !== 'undefined' && Nuvem.ativo
+          ? `<p class="muted" style="margin:0 0 10px">Você entra com o e-mail <b>${esc(Nuvem.conta?.email || b.email)}</b>. A senha de cada profissional fica no cadastro dele, em Equipe.</p>
+            <div class="acoes"><button type="button" class="btn" data-a="trocar-senha">${ic('cadeado')} Trocar minha senha</button></div>`
+          : `<div class="grade-form"><label class="campo"><span>PIN do dono (4 números)</span><input name="pin_dono" data-pin inputmode="numeric" value="${esc(b.pin_dono)}"></label></div>`}</div>
         <div class="card" id="assinatura"><div class="card-cab"><div><h3>Assinatura ${APP.nome}</h3><p>Plano ${esc(plano?.nome || '—')} · ${dinheiro(b.valor_mensal)}/mês · vence todo dia ${b.dia_vencimento}</p></div>${UI.badge(s.texto, s.tom)}</div>
           ${this.resumoPlano()}
-          ${cobs.length ? `<div class="linhas">${cobs.map(c => `<div class="linha"><div class="linha-txt"><b>${cap(Datas.nomeMes(c.referencia))}</b><small>vence ${Datas.br(c.vencimento)}${c.pago_em ? ` · pago em ${Datas.br(c.pago_em)}` : ''}</small></div><div class="linha-fim"><b>${dinheiro(c.valor)}</b>${c.status === 'paga' ? UI.badge('Paga', 'ok') : c.status === 'cancelada' ? UI.badge('Cancelada', 'neutro') : c.vencimento < Datas.hoje() ? UI.badge('Vencida', 'ruim') : UI.badge('A vencer', 'info')}</div></div>`).join('')}</div>` : '<p class="muted">Nenhuma mensalidade ainda.</p>'}
+          ${cobs.length ? `<div class="linhas">${cobs.map(c => `<div class="linha"><div class="linha-txt"><b>${cap(Datas.nomeMes(c.referencia))}</b><small>vence ${Datas.br(c.vencimento)}${c.pago_em ? ` · pago em ${Datas.br(c.pago_em)}` : ''}</small></div><div class="linha-fim"><b>${dinheiro(c.valor)}</b>${c.status === 'paga' ? UI.badge('Paga', 'ok') : c.status === 'cancelada' ? UI.badge('Cancelada', 'neutro') : c.vencimento < Datas.hoje() ? UI.badge('Vencida', 'ruim') : UI.badge('A vencer', 'info')}${c.status === 'pendente' && c.link_pagamento ? `<a class="btn peq pri" href="${esc(c.link_pagamento)}" target="_blank" rel="noopener">Pagar</a>` : ''}</div></div>`).join('')}</div>` : '<p class="muted">Nenhuma mensalidade ainda.</p>'}
           <div class="acoes" style="margin-top:12px"><button type="button" class="btn peq" data-a="copiar" data-v="${esc(cfg.chave_pix)}">${ic('copiar')} Copiar chave PIX</button><a class="btn peq" href="${linkWhats(cfg.suporte_whatsapp, `Olá! Sou responsável por ${b.nome} e queria falar sobre a minha assinatura.`)}" target="_blank" rel="noopener">${ic('mensagem')} Falar com o suporte</a><button type="button" class="btn peq" data-a="ver-planos">${ic('diamante')} Comparar planos</button></div></div>
         <div class="salvar-barra"><button class="btn pri grande">${ic('check')} Salvar ajustes</button></div>
       </form>`;
@@ -962,11 +972,12 @@ const Painel = {
     if (!d.nome) throw new Error('Informe o nome do estabelecimento.');
     const tel = soDigitos(d.whatsapp);
     if (tel && ![10, 11].includes(tel.length)) throw new Error('Confira o WhatsApp: DDD + número.');
-    if (!/^\d{4}$/.test(d.pin_dono)) throw new Error('O PIN do dono precisa ter 4 números.');
+    const oficial = typeof Nuvem !== 'undefined' && Nuvem.ativo;
+    if (!oficial && !/^\d{4}$/.test(d.pin_dono)) throw new Error('O PIN do dono precisa ter 4 números.');
     const horario = UI.lerHorario(f, 'hf');
     await Store.salvar('barbearias', {
       id: b.id, nome: d.nome, whatsapp: tel, endereco: d.endereco, maps_url: d.maps_url, instagram: d.instagram.replace(/^@/, ''),
-      boas_vindas: d.boas_vindas, cor: d.cor, logo: this._logo, horario, pin_dono: d.pin_dono,
+      boas_vindas: d.boas_vindas, cor: d.cor, logo: this._logo, horario, ...(oficial ? { passos: { ...(b.passos || {}), dados: true } } : { pin_dono: d.pin_dono }),
       regras: { intervalo: +d.intervalo, antecedencia: +d.antecedencia, dias_frente: +d.dias_frente, cancelar_ate: +d.cancelar_ate },
       ...this.lerAjustesExtras(f)
     });
@@ -986,6 +997,8 @@ const Painel = {
           + `<button data-a="ver-planos">${ic('diamante')}<span>Planos do ${APP.nome}</span>${ic('direita')}</button>`
           + (Planos.tem(b, 'suporte') ? it(linkWhats(Store.db.config.suporte_whatsapp, `Olá! Sou de ${b.nome} (plano Premium) e preciso de ajuda com o ${APP.nome}.`), 'usuarios', 'Suporte humanizado (WhatsApp)', 'target="_blank" rel="noopener"')
             : `<button data-a="bloq-recurso" data-v="suporte">${ic('usuarios')}<span>Suporte humanizado (WhatsApp)</span><i class="nav-cad">${ic('cadeado')}</i>${ic('direita')}</button>`) : ''}
+        ${it(this.h('ajuda'), 'info', 'Como usar (passo a passo)')}
+        ${typeof Nuvem !== 'undefined' && Nuvem.ativo && !this.sessao?.admin ? `<button data-a="trocar-senha">${ic('cadeado')}<span>Trocar minha senha</span>${ic('direita')}</button>` : ''}
         <button data-a="instalar-app">${ic('baixar')}<span>Instalar o app no celular</span>${ic('direita')}</button>
         <button data-a="ativar-notif">${ic('info')}<span>Ativar notificações</span>${ic('direita')}</button>
         ${it('#/' + b.slug, 'externo', 'Abrir minha página de agendamento', 'target="_blank"')}

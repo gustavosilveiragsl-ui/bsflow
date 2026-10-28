@@ -7,8 +7,15 @@ const Admin = {
   app: null, aba: 'geral', aberto: null, // aberto = barbearia com a ficha aberta
   f: { busca: '', sit: 'todas', mes: null, cob: 'todas' },
 
-  logado() { try { return localStorage.getItem('bsflow:admin') === '1'; } catch (e) { return false; } },
-  entrar(sim) { try { sim ? localStorage.setItem('bsflow:admin', '1') : localStorage.removeItem('bsflow:admin'); } catch (e) { /* sem armazenamento */ } },
+  oficial() { return typeof Nuvem !== 'undefined' && Nuvem.ativo; },
+  logado() {
+    if (this.oficial()) return Nuvem.conta?.papel === 'admin';
+    try { return localStorage.getItem('bsflow:admin') === '1'; } catch (e) { return false; }
+  },
+  entrar(sim) {
+    if (this.oficial()) { if (!sim) Nuvem.sair(); return; }
+    try { sim ? localStorage.setItem('bsflow:admin', '1') : localStorage.removeItem('bsflow:admin'); } catch (e) { /* sem armazenamento */ }
+  },
 
   render(app, sub = []) {
     this.app = app;
@@ -50,6 +57,7 @@ const Admin = {
   },
 
   login() {
+    if (this.oficial()) return this.loginOficial();
     this.app.innerHTML = `<div class="login"><div class="login-card">
       <span class="marca"><span class="marca-icone">${ic('tesoura')}</span><span class="marca-txt"><b>${APP.nome}</b></span></span>
       <h1>Administração do sistema</h1><p>Área do dono da plataforma.</p>
@@ -66,6 +74,40 @@ const Admin = {
       if (f.senha.value === Store.db.config.senha_admin) { this.entrar(true); Rotas.render(); }
       else { UI.toast('Senha incorreta.', 'erro'); f.senha.select(); }
     };
+  },
+
+  loginOficial() {
+    this.app.innerHTML = `<div class="login"><div class="login-card">
+      <span class="marca"><span class="marca-icone">${ic('tesoura')}</span><span class="marca-txt"><b>${APP.nome}</b></span></span>
+      <h1>Administração do sistema</h1><p>Área do dono da plataforma.</p>
+      <form id="f-login" class="pilha" style="text-align:left">
+        <label class="campo"><span>E-mail</span><input type="email" name="email" autocomplete="email"></label>
+        <label class="campo"><span>Senha</span><input type="password" name="senha" autocomplete="current-password"></label>
+        <button class="btn pri grande">Entrar</button>
+      </form>
+      <div class="login-voltar"><a class="btn fantasma" href="#/">${ic('voltar')} Voltar ao início</a></div>
+    </div></div>`;
+    const f = $('#f-login', this.app);
+    setTimeout(() => f.email.focus(), 50);
+    f.onsubmit = async e => {
+      e.preventDefault();
+      try {
+        const c = await Nuvem.entrar(f.email.value, f.senha.value);
+        if (c.papel !== 'admin') { await Nuvem.sair(); throw new Error('Este login não é da administração.'); }
+        Rotas.render();
+      } catch (err) { UI.erro(err); }
+    };
+  },
+  // ações do Asaas e do login do dono (servidor)
+  async acaoServidor(corpo, ok) {
+    try {
+      const r = await Nuvem.funcao('bsflow-admin', corpo);
+      UI.toast(ok(r), 'info');
+      Nuvem.contexto = null;
+      await Rotas.render();
+      if (this.aberto) this.preencherFicha();
+      return r;
+    } catch (e) { UI.erro(e); }
   },
 
   /* ---------------- telas ---------------- */
@@ -253,12 +295,17 @@ const Admin = {
           <label class="campo inteiro"><span>Lembrete (antes de vencer)</span><textarea name="msg_lembrete" rows="3">${esc(c.msg_lembrete)}</textarea></label>
           <label class="campo inteiro"><span>Cobrança (depois de vencer)</span><textarea name="msg_atraso" rows="4">${esc(c.msg_atraso)}</textarea></label>
         </div></div>
-        <div class="card"><div class="card-cab"><h3>Acesso</h3></div><div class="grade-form">
+        ${this.oficial() ? `<div class="card"><div class="card-cab"><div><h3>Cobrança pelo Asaas</h3><p>Assinaturas criadas na contratação; os pagamentos chegam sozinhos pelo aviso do Asaas.</p></div></div>
+          <p class="muted" style="margin:0 0 10px">A chave do Asaas fica nos segredos do Supabase (ASAAS_API_KEY), nunca aqui na tela. Servidor: <b>${esc(Nuvem.cfg.nome)}</b>.</p>
+          <div class="acoes"><button type="button" class="btn" data-a="asaas-testar">${ic('check')} Testar a conexão</button>
+            <button type="button" class="btn" data-a="asaas-configurar">${ic('link')} Ligar o aviso de pagamento</button>
+            <a class="btn fantasma" href="#/contratar" target="_blank">${ic('externo')} Página de contratação</a></div></div>`
+        : `<div class="card"><div class="card-cab"><h3>Acesso</h3></div><div class="grade-form">
           <label class="campo"><span>Nova senha da administração</span><input type="password" name="senha_nova" autocomplete="new-password" placeholder="Deixe em branco para manter"></label>
         </div></div>
         <div class="card"><div class="card-cab"><div><h3>Dados de demonstração</h3><p>Os dados desta versão ficam só neste navegador.</p></div></div>
           <div class="acoes"><button type="button" class="btn" data-a="exportar">${ic('baixar')} Baixar cópia (JSON)</button>
-            <button type="button" class="btn perigo-txt" data-a="restaurar">${ic('atualizar')} Restaurar dados de demonstração</button></div></div>
+            <button type="button" class="btn perigo-txt" data-a="restaurar">${ic('atualizar')} Restaurar dados de demonstração</button></div></div>`}
         <div class="salvar-barra"><button class="btn pri grande">${ic('check')} Salvar ajustes</button></div>
       </form>`;
   },
@@ -303,7 +350,12 @@ const Admin = {
         <dt>Endereço</dt><dd>${esc(b.endereco || '—')}</dd>
         <dt>Plano</dt><dd>${esc(plano?.nome || '—')} · <b>${dinheiro(b.valor_mensal)}</b>/mês · vence todo dia ${b.dia_vencimento}</dd>
         <dt>Cliente desde</dt><dd>${Datas.br((b.criado_em || '').slice(0, 10))}${b.status === 'teste' ? ` · teste até ${Datas.br(b.teste_ate)}` : ''}</dd>
-        <dt>Painel</dt><dd><a href="#/${esc(b.slug)}/painel" target="_blank">${ic('externo')} Abrir painel</a> · PIN do dono: <b>${esc(b.pin_dono)}</b> <button class="btn peq fantasma" data-a="novo-pin" data-id="${b.id}">Trocar</button></dd>
+        ${this.oficial()
+          ? `<dt>Painel</dt><dd><a href="#/${esc(b.slug)}/painel" target="_blank">${ic('externo')} Abrir painel</a> · login: <b>${esc(b.email || '—')}</b> <button class="btn peq fantasma" data-a="senha-dono" data-id="${b.id}">Nova senha</button></dd>
+            <dt>CPF/CNPJ</dt><dd>${esc(b.cpf_cnpj || '—')}</dd>
+            <dt>Asaas</dt><dd>${b.asaas_assinatura_id ? `assinatura <b>${esc(b.asaas_assinatura_id)}</b>${b.primeiro_vencimento ? ` · 1º vencimento ${Datas.br(b.primeiro_vencimento)}` : ''} <button class="btn peq fantasma" data-a="asaas-assinar" data-id="${b.id}">Buscar cobranças</button>`
+              : `<span class="erro-txt">sem assinatura${b.asaas_erro ? `: ${esc(b.asaas_erro)}` : ''}</span> <button class="btn peq" data-a="asaas-assinar" data-id="${b.id}">Criar assinatura</button>`}</dd>`
+          : `<dt>Painel</dt><dd><a href="#/${esc(b.slug)}/painel" target="_blank">${ic('externo')} Abrir painel</a> · PIN do dono: <b>${esc(b.pin_dono)}</b> <button class="btn peq fantasma" data-a="novo-pin" data-id="${b.id}">Trocar</button></dd>`}
         <dt>Agendamento</dt><dd><a href="#/${esc(b.slug)}" target="_blank">${ic('externo')} /${esc(b.slug)}</a></dd>
         ${b.obs ? `<dt>Observações</dt><dd>${esc(b.obs)}</dd>` : ''}
       </dl></div>
@@ -346,7 +398,16 @@ const Admin = {
         case 'filtro-cob': this.f.cob = el.dataset.v; return this.pintar();
         case 'ir-cob': this.f.cob = el.dataset.v; location.hash = '#/admin/cobrancas'; return;
         case 'mes': this.f.mes = Datas.somaMes(this.f.mes, Number(el.dataset.d)); return this.pintar();
+        case 'asaas-testar': return this.acaoServidor({ acao: 'asaas_testar' }, r => `Asaas ligado: ${r.conta} (${r.ambiente}).`);
+        case 'asaas-configurar': return this.acaoServidor({ acao: 'asaas_configurar' }, () => 'Aviso de pagamento ligado no Asaas.');
+        case 'asaas-assinar': return this.acaoServidor({ acao: 'asaas_assinar', barbearia_id: id }, r => `Assinatura em dia no Asaas · ${r.cobrancas} cobrança(s).`);
+        case 'senha-dono': {
+          const senha = (prompt('Nova senha para o dono (pelo menos 8 caracteres). Mande para ele pelo WhatsApp e peça para trocar em Ajustes.') || '').trim();
+          if (!senha) return;
+          return this.acaoServidor({ acao: 'senha', barbearia_id: id, senha }, () => 'Senha nova definida.');
+        }
         case 'gerar-mes': {
+          if (this.oficial()) return UI.toast('Na versão oficial as mensalidades são geradas pelo Asaas, todo mês, sozinhas.', 'info');
           const n = await Cobranca.gerarMes(this.f.mes);
           UI.toast(n ? `${n} cobrança${n > 1 ? 's geradas' : ' gerada'}.` : 'Nenhuma cobrança nova.');
           return this.depois();
@@ -523,6 +584,14 @@ const Admin = {
   },
 
   formBB(id) {
+    if (!id && this.oficial()) {
+      const link = location.href.split('#')[0] + '#/contratar';
+      const m = UI.modal({ titulo: 'Novo cliente', classe: 'pequeno',
+        corpo: `<p class="texto-modal">Na versão oficial o cliente se cadastra pela página de contratação: escolhe o plano, cria o login e já começa o teste grátis. Mande o link para ele ou preencha junto com ele.</p><div class="link-caixa" style="margin-top:12px"><code>${esc(link)}</code></div>`,
+        rodape: `<button class="btn" data-fechar>Fechar</button><button class="btn" id="cp-contratar">${ic('copiar')} Copiar link</button><a class="btn pri" href="#/contratar" target="_blank">${ic('externo')} Abrir</a>` });
+      $('#cp-contratar', m.el).onclick = () => UI.copiar(link);
+      return;
+    }
     const b = id ? Store.get('barbearias', id) : null;
     const planos = Store.t('planos');
     const v = (k, d = '') => esc(b ? b[k] ?? d : d);

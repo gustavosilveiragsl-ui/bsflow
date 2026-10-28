@@ -8,7 +8,7 @@
    (ver docs/BANCO.md), então trocar o Store depois não mexe nas telas.
    ============================================================ */
 
-const APP = { nome: 'BSFlow', versao: '0.3.0' };
+const APP = { nome: 'BSFlow', versao: '1.0.0' };
 
 const DIAS = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
 const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
@@ -205,7 +205,7 @@ const Planos = {
   // em teste o estabelecimento experimenta tudo; depois vale o que o plano libera
   tem(b, recurso) {
     if (!b) return false;
-    if (b.status === 'teste') return true;
+    if (b.status === 'teste' && b.teste_ate && b.teste_ate >= Datas.hoje()) return true;
     return !!this.de(b)?.recursos?.includes(recurso);
   },
   // o plano mais barato que tem o recurso (para mostrar "disponível no plano X")
@@ -220,6 +220,8 @@ const Planos = {
 const Cobranca = {
   situacao(b, hoje = Datas.hoje()) {
     const cfg = Store.db.config;
+    // no chat oficial a situação vem pronta do servidor (o cliente não vê as cobranças)
+    if (b._sit) return { atraso: 0, vencidas: [], pendentes: [], emAtraso: 0, proxima: null, cod: b._sit.cod, acesso: !!b._sit.acesso, texto: '', tom: 'neutro', motivo: b._sit.motivo || '' };
     const pendentes = Store.de('cobrancas', b.id).filter(c => c.status === 'pendente')
       .sort((x, y) => x.vencimento.localeCompare(y.vencimento));
     const vencidas = pendentes.filter(c => c.vencimento < hoje);
@@ -232,8 +234,10 @@ const Cobranca = {
     if (b.bloqueada) return { ...base, cod: 'bloqueada', texto: 'Bloqueada', tom: 'ruim', acesso: false, motivo: b.motivo_bloqueio || 'Acesso bloqueado pela administração.' };
     if (b.status === 'teste') {
       const resta = b.teste_ate ? Datas.diff(b.teste_ate, hoje) : -1;
-      if (resta < 0) return { ...base, cod: 'teste_fim', texto: 'Teste encerrado', tom: 'ruim', acesso: false, motivo: 'O período de teste terminou.' };
-      return { ...base, cod: 'teste', texto: resta === 0 ? 'Teste acaba hoje' : `Teste · ${resta} dia${resta > 1 ? 's' : ''}`, tom: 'info', acesso: true, resta };
+      if (resta >= 0) return { ...base, cod: 'teste', texto: resta === 0 ? 'Teste acaba hoje' : `Teste · ${resta} dia${resta > 1 ? 's' : ''}`, tom: 'info', acesso: true, resta };
+      // teste acabou: sem cobrança, o acesso para; com cobrança emitida, vale a regra de quem paga
+      if (!Store.de('cobrancas', b.id).some(c => c.status !== 'cancelada'))
+        return { ...base, cod: 'teste_fim', texto: 'Teste encerrado', tom: 'ruim', acesso: false, motivo: 'O período de teste terminou.' };
     }
     if (vencidas.length) {
       const liberada = b.liberado_ate && b.liberado_ate >= hoje;
@@ -396,6 +400,8 @@ const Agenda = {
       if (!livres.length) throw ocupado;
       barbeiro = this.maisLivre(b, livres, data);
     } else if (!encaixe && !this.cabe(b, barbeiro, data, ini, dur, id)) throw ocupado;
+    // chat oficial: o servidor confere o horário de novo e calcula o preço
+    if (typeof Nuvem !== 'undefined' && Nuvem.ehChat()) return Nuvem.chatAgendar({ b, barbeiroId: barbeiro.id, data, ini, servicos, nome, telefone, id });
     const cliente = await this.cliente(b, (nome || '').trim(), telefone);
     const reg = {
       barbearia_id: b.id, barbeiro_id: barbeiro.id, cliente_id: cliente?.id || null,
