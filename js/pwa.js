@@ -40,7 +40,7 @@ const PWA = {
   configurar({ nome, curto, cor = '#c9a227', logo = null, texto = 'BS', inicio = location.href }) {
     try {
       if (logo && this._img?.src !== logo) { this._img = new Image(); this._img.onload = () => this.configurar({ nome, curto, cor, logo, texto, inicio }); this._img.src = logo; }
-      const base = location.href.split('#')[0].replace(/[^/]*$/, '');
+      const base = document.baseURI.split('#')[0].replace(/[^/]*$/, ''); // respeita o <base> da demonstração
       const manifesto = {
         id: inicio.replace(location.origin, ''), name: nome, short_name: (curto || nome).slice(0, 18), start_url: inicio, scope: base,
         display: 'standalone', background_color: '#110f0c', theme_color: cor, lang: 'pt-BR',
