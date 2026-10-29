@@ -193,7 +193,6 @@ const Site = {
 
   entrar(app) {
     document.title = `Entrar · ${APP.nome}`;
-    const sup = Store.db.config?.suporte_whatsapp;
     app.innerHTML = this.casca(`<div class="site-form-card">
       <h1>Entrar</h1><p class="muted">Para o dono do estabelecimento e a administração do ${APP.nome}. Profissionais da equipe entram pelo link do painel do estabelecimento.</p>
       <form id="f-entrar" class="pilha">
@@ -201,7 +200,7 @@ const Site = {
         <label class="campo"><span>Senha</span><input type="password" name="senha" autocomplete="current-password" required></label>
         <button class="btn pri grande">Entrar</button>
       </form>
-      <p class="muted" style="margin-top:14px">Esqueceu a senha? ${sup ? `<a href="${linkWhats(sup, `Olá! Esqueci a senha do ${APP.nome}. Meu e-mail é: `)}" target="_blank" rel="noopener">Fale com o suporte</a>` : 'Fale com o suporte'} que a gente cria uma nova.</p>
+      <p class="muted" style="margin-top:14px">Esqueceu a senha? <a href="#/esqueci">Receber um link por e-mail</a>.</p>
       <p class="muted">Ainda não tem conta? <a href="#/contratar">Comece o teste grátis</a>.</p>
     </div>`, { simples: true });
     const f = $('#f-entrar', app);
@@ -211,6 +210,73 @@ const Site = {
       try {
         const c = await Nuvem.entrar(f.email.value, f.senha.value);
         location.hash = c.papel === 'admin' ? '#/admin' : `#/${c.slug}/painel`;
+      } catch (err) { UI.erro(err); bt.disabled = false; }
+    };
+  },
+
+  // "Esqueci a senha": o servidor manda por e-mail um link de uso único (vale 1 hora)
+  esqueci(app) {
+    document.title = `Esqueci a senha · ${APP.nome}`;
+    app.innerHTML = this.casca(`<div class="site-form-card">
+      <h1>Esqueci a senha</h1><p class="muted">Digite o e-mail do seu login. Se ele tiver conta no ${APP.nome}, mandamos um link para você criar uma senha nova.</p>
+      <form id="f-esqueci" class="pilha">
+        <label class="campo"><span>E-mail</span><input type="email" name="email" autocomplete="email" required></label>
+        <button class="btn pri grande">Enviar o link</button>
+      </form>
+      <p class="muted" style="margin-top:14px">É da equipe de um estabelecimento? Peça ao dono para criar uma senha nova no seu cadastro (Equipe).</p>
+      <p class="muted"><a href="#/entrar">Voltar para o login</a></p>
+    </div>`, { simples: true });
+    const f = $('#f-esqueci', app);
+    setTimeout(() => f.email.focus(), 50);
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const bt = $('button', f), email = f.email.value.trim().toLowerCase();
+      bt.disabled = true;
+      try {
+        await Nuvem.funcao('senha', { email });
+        $('.site-form-card', app).innerHTML = `<h1>Confira seu e-mail</h1>
+          <p>Se <b>${esc(email)}</b> tiver conta no ${APP.nome}, o link para criar uma senha nova chega em alguns minutos. Olhe também a caixa de spam.</p>
+          <p class="muted">O link vale por 1 hora e só funciona uma vez.</p>
+          <div class="acoes"><a class="btn" href="#/entrar">Voltar para o login</a></div>`;
+      } catch (err) { UI.erro(err); bt.disabled = false; }
+    };
+  },
+
+  // link do e-mail: o código vale uma vez; com ele o Supabase abre a sessão e a pessoa escolhe a senha nova
+  async 'nova-senha'(app) {
+    document.title = `Senha nova · ${APP.nome}`;
+    const codigo = new URLSearchParams(location.hash.split('?')[1] || '').get('t');
+    // o código sai do endereço na hora (não fica no histórico nem em print da tela)
+    history.replaceState(history.state, '', location.pathname + location.search + '#/nova-senha');
+    const invalido = () => { app.innerHTML = this.casca(`<div class="site-form-card"><h1>Esse link não vale mais</h1>
+      <p class="muted">O link para criar uma senha nova vale por 1 hora e só funciona uma vez. Peça outro, que chega na hora.</p>
+      <div class="acoes"><a class="btn pri" href="#/esqueci">Pedir outro link</a><a class="btn" href="#/entrar">Voltar para o login</a></div></div>`, { simples: true }); };
+    if (!codigo) return invalido();
+    app.innerHTML = this.casca(`<div class="site-form-card"><p class="muted"><span class="pag-girando"></span> Conferindo o link…</p></div>`, { simples: true });
+    const { data, error } = await Nuvem.sb.auth.verifyOtp({ token_hash: codigo, type: 'recovery' });
+    if (error || !data?.user) return invalido();
+    Nuvem.conta = undefined; Nuvem.contexto = null; // a sessão agora é de quem pediu o link
+    const email = data.user.email;
+    app.innerHTML = this.casca(`<div class="site-form-card">
+      <h1>Criar senha nova</h1><p class="muted">Login: <b>${esc(email)}</b></p>
+      <form id="f-nova-senha" class="pilha">
+        <label class="campo"><span>Senha nova</span><input type="password" name="senha" autocomplete="new-password" minlength="8" required><small>Pelo menos 8 caracteres.</small></label>
+        <label class="campo"><span>Repita a senha nova</span><input type="password" name="senha2" autocomplete="new-password" minlength="8" required></label>
+        <button class="btn pri grande">Salvar e entrar</button>
+      </form></div>`, { simples: true });
+    const f = $('#f-nova-senha', app);
+    setTimeout(() => f.senha.focus(), 50);
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const bt = $('button', f);
+      try {
+        if (f.senha.value.length < 8) throw new Error('A senha precisa ter pelo menos 8 caracteres.');
+        if (f.senha.value !== f.senha2.value) throw new Error('As duas senhas não estão iguais.');
+        bt.disabled = true;
+        await Nuvem.trocarSenha(f.senha.value);
+        const c = await Nuvem.lerConta(true);
+        UI.toast('Senha nova salva.', 'ok');
+        location.hash = !c ? '#/entrar' : c.papel === 'admin' ? '#/admin' : `#/${c.slug}/painel`;
       } catch (err) { UI.erro(err); bt.disabled = false; }
     };
   },
@@ -363,7 +429,7 @@ if (Nuvem.ativo) Object.assign(Painel, {
         <label class="campo"><span>Senha</span><input type="password" name="senha" autocomplete="current-password"></label>
         <button class="btn pri grande">Entrar</button>
       </form>
-      <p class="muted" style="font-size:13.5px;margin-top:12px" data-dono>Esqueceu a senha? ${sup ? `<a href="${linkWhats(sup, `Olá! Esqueci a senha do painel de ${b.nome}.`)}" target="_blank" rel="noopener">Fale com o suporte</a>` : 'Fale com o suporte'}.</p>
+      <p class="muted" style="font-size:13.5px;margin-top:12px" data-dono>Esqueceu a senha? <a href="#/esqueci">Receber um link por e-mail</a>.${sup ? ` Se não chegar, <a href="${linkWhats(sup, `Olá! Esqueci a senha do painel de ${b.nome}.`)}" target="_blank" rel="noopener">fale com o suporte</a>.` : ''}</p>
       <p class="muted" style="font-size:13.5px;margin-top:12px" data-equipe hidden>Sem senha ou esqueceu? Peça ao dono do estabelecimento para criar uma no seu cadastro (Equipe).</p>
       <details class="primeiro-acesso"><summary>${ic('info')} Primeiro acesso? Veja o passo a passo</summary>
         <ol><li>Entre com o <b>e-mail e a senha</b> que você criou na contratação.</li>

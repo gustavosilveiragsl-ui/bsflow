@@ -19,7 +19,7 @@ const Rotas = {
     UI.aplicarCor(null);
     const p = this.partes();
     // app instalado: lembra a última tela, para abrir direto nela da próxima vez
-    try { if (PWA.instalado() && p.length && !['contratar', 'entrar', 'termos', 'privacidade'].includes(p[0])) localStorage.setItem('bsflow:ultima-tela', '/' + p.join('/')); } catch (e) { /* sem armazenamento */ }
+    try { if (PWA.instalado() && p.length && !PAGINAS_SITE.includes(p[0])) localStorage.setItem('bsflow:ultima-tela', '/' + p.join('/')); } catch (e) { /* sem armazenamento */ }
     const base = location.href.split('#')[0];
     PWA.configurar(p[0] === 'admin'
       ? { nome: `${APP.nome} · Administração`, curto: `${APP.nome} Admin`, texto: 'BS', inicio: base + '#/admin' }
@@ -30,7 +30,7 @@ const Rotas = {
         await Nuvem.preparar(p);
         if (vez !== this.vez) return; // outra tela foi aberta enquanto carregava
         if (!p.length) return Site.home(app);
-        if (Site[p[0]] && ['contratar', 'entrar', 'termos', 'privacidade'].includes(p[0])) return Site[p[0]](app);
+        if (Site[p[0]] && PAGINAS_SITE.includes(p[0])) return Site[p[0]](app);
       } else if (['termos', 'privacidade'].includes(p[0])) return Site[p[0]](app);
       if (!p.length) return Home.render(app);
       if (p[0] === 'admin') return Admin.render(app, p.slice(1));

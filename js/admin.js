@@ -85,6 +85,7 @@ const Admin = {
         <label class="campo"><span>Senha</span><input type="password" name="senha" autocomplete="current-password"></label>
         <button class="btn pri grande">Entrar</button>
       </form>
+      <p class="muted" style="font-size:13.5px;margin-top:12px">Esqueceu a senha? <a href="#/esqueci">Receber um link por e-mail</a>.</p>
       <div class="login-voltar"><a class="btn fantasma" href="#/">${ic('voltar')} Voltar ao início</a></div>
     </div></div>`;
     const f = $('#f-login', this.app);

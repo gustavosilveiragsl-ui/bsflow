@@ -167,7 +167,7 @@ const Nuvem = {
     }
     return this.carregar('chat:' + slug);
   },
-  ehEstab(p) { return !['contratar', 'entrar', 'termos', 'privacidade'].includes(p[0]); },
+  ehEstab(p) { return !PAGINAS_SITE.includes(p[0]); },
   async garantirPlanos() {
     if (this.contexto === 'site') return;
     this.pararAoVivo();

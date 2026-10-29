@@ -19,7 +19,9 @@ const FORMAS_PAGAMENTO = { pix: 'PIX', dinheiro: 'Dinheiro', debito: 'Débito', 
 const STATUS_AG = { confirmado: 'Confirmado', concluido: 'Concluído', faltou: 'Faltou', cancelado: 'Cancelado' };
 const CATEGORIAS = ['Cabelo', 'Barba', 'Unhas', 'Sobrancelha', 'Estética', 'Química', 'Maquiagem', 'Combo', 'Outros'];
 const TIPOS_ESTAB = { barbearia: 'Barbearia', salao: 'Salão de beleza', ambos: 'Barbearia e salão' };
-const SLUGS_RESERVADOS = ['admin', 'painel', 'api', 'app', 'login', 'demo', 'suporte'];
+const SLUGS_RESERVADOS = ['admin', 'painel', 'api', 'app', 'login', 'demo', 'suporte', 'esqueci', 'nova-senha'];
+// telas do site oficial (não são link de estabelecimento)
+const PAGINAS_SITE = ['contratar', 'entrar', 'termos', 'privacidade', 'esqueci', 'nova-senha'];
 
 /* ---------- utilidades ---------- */
 const pad = n => String(n).padStart(2, '0');
