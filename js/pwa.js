@@ -73,9 +73,11 @@ const PWA = {
   },
   async pedirPermissao() {
     if (!('Notification' in window)) return false;
-    if (Notification.permission === 'granted') return true;
-    if (Notification.permission === 'denied') return false;
-    return (await Notification.requestPermission()) === 'granted';
+    let ok = Notification.permission === 'granted';
+    if (!ok && Notification.permission !== 'denied') ok = (await Notification.requestPermission()) === 'granted';
+    // versão oficial: inscreve o aparelho no servidor para receber os avisos mesmo com o app fechado
+    if (ok && typeof Nuvem !== 'undefined' && Nuvem.ativo) await Nuvem.inscreverPush().catch(e => console.warn('push', e));
+    return ok;
   },
   async notificar(titulo, corpo, url) {
     try {
@@ -89,7 +91,10 @@ const PWA = {
   },
   textoSituacao() {
     const n = !('Notification' in window) ? 'este navegador não mostra notificações' : Notification.permission === 'granted' ? 'notificações ativas neste aparelho' : Notification.permission === 'denied' ? 'notificações bloqueadas no navegador' : 'notificações ainda não ativadas';
-    return `${this.instalado() ? 'App instalado' : 'Abrindo pelo navegador'} · ${n}. Com o app aberto em segundo plano chega aviso de novo agendamento; na versão oficial chega mesmo com o app fechado.`;
+    const fechado = typeof Nuvem !== 'undefined' && Nuvem.ativo
+      ? 'Os avisos chegam mesmo com o app fechado' + (this.ios() ? ' (no iPhone, com o app instalado na tela de início).' : '.')
+      : 'Com o app aberto em segundo plano chega aviso de novo agendamento; na versão oficial chega mesmo com o app fechado.';
+    return `${this.instalado() ? 'App instalado' : 'Abrindo pelo navegador'} · ${n}. ${fechado}`;
   }
 };
 PWA.iniciar();

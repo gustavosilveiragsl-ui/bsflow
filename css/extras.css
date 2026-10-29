@@ -218,3 +218,4 @@
   .passo { flex-wrap: wrap; }
   .passo-acoes { width: 100%; justify-content: flex-end; }
 }
+.aviso-faixa.ok { background: var(--ok-bg); color: var(--ok); }

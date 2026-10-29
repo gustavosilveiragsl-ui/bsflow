@@ -454,3 +454,64 @@ Passos.boasVindas = function (painel) {
   });
   $('#bv-guia', m.el).onclick = () => { m.fechar(); Ajuda.abrir(['primeiro', 'dados']); };
 };
+
+/* ---------------- WhatsApp do estabelecimento (mensagens automáticas) ---------------- */
+if (Nuvem.ativo) Object.assign(Painel, {
+  cartaoWhatsApp() {
+    const b = this.b, pode = Planos.tem(b, 'lembretes') || Planos.tem(b, 'cobranca_auto');
+    const est = b.whatsapp_estado || 'desconectado';
+    const selo = est === 'conectado' ? UI.badge('Conectado', 'ok', 'check') : est === 'conectando' ? UI.badge('Aguardando o QR code', 'aviso') : UI.badge('Desconectado', 'neutro');
+    let corpo;
+    if (!pode) corpo = `<button type="button" class="trava-linha" data-a="bloq-recurso" data-v="lembretes">${ic('cadeado')}<span>Mensagens automáticas no WhatsApp: disponível a partir do plano ${esc(Planos.minimoPara('lembretes')?.nome || 'Equipe')}</span><b>Quero</b></button>`;
+    else if (est === 'conectado') corpo = `<p style="margin:0 0 12px">As mensagens saem sozinhas pelo número <b>${esc(fmtTel(b.whatsapp_numero || b.whatsapp))}</b>: confirmação, lembretes, avisos à equipe${Planos.tem(b, 'cobranca_auto') ? ' e cobrança dos mensalistas' : ''}.</p>
+        <div class="acoes"><button type="button" class="btn" data-a="wa-testar">${ic('mensagem')} Enviar teste</button><button type="button" class="btn fantasma" data-a="wa-atualizar">${ic('atualizar')} Conferir conexão</button><button type="button" class="btn perigo-txt" data-a="wa-desconectar">${ic('power')} Desconectar</button></div>`;
+    else corpo = `<ol class="passos" style="margin:0 0 12px"><li>Use o celular com o <b>WhatsApp do estabelecimento</b> (de preferência o WhatsApp Business).</li><li>Toque em <b>Conectar WhatsApp</b> e leia o QR code em <b>Configurações → Aparelhos conectados → Conectar um aparelho</b>.</li><li>Pronto: as mensagens do BSFlow passam a sair por esse número, no horário certo.</li></ol>
+        <div class="acoes"><button type="button" class="btn pri" data-a="wa-conectar">${ic('link')} Conectar WhatsApp</button>${est === 'conectando' ? `<button type="button" class="btn fantasma" data-a="wa-atualizar">${ic('atualizar')} Já li o código</button>` : ''}</div>
+        <p class="ajuda" style="margin-top:10px">Envie só mensagens de atendimento para quem agendou. Disparo em massa pode fazer o WhatsApp bloquear o número.</p>`;
+    return `<div class="card" id="whatsapp"><div class="card-cab"><div><h3>WhatsApp do estabelecimento</h3><p>As mensagens automáticas saem por este número</p></div>${pode ? selo : ''}</div>${corpo}</div>`;
+  },
+  // guarda no cache o que o servidor respondeu sobre o WhatsApp e redesenha
+  waGuardar(r) {
+    const b = Store.get('barbearias', this.b.id);
+    if (b && r?.estado) Object.assign(b, { whatsapp_estado: r.estado, ...(r.numero != null ? { whatsapp_numero: r.numero } : {}) });
+    this.b = b || this.b;
+  },
+  async waAcao(acao, ok) {
+    try {
+      const r = await Nuvem.funcao('whatsapp', { acao });
+      this.waGuardar(r);
+      UI.toast(ok || (r.estado === 'conectado' ? 'WhatsApp conectado.' : 'WhatsApp não está conectado.'), r.estado === 'conectado' || ok ? 'ok' : 'info');
+      this.pintar();
+    } catch (e) { UI.erro(e); }
+  },
+  async waConectar() {
+    let fim = false, r;
+    try { r = await Nuvem.funcao('whatsapp', { acao: 'conectar' }); } catch (e) { return UI.erro(e); }
+    if (r.estado === 'conectado') { this.waGuardar(r); this.pintar(); return UI.toast('WhatsApp conectado.'); }
+    const img = q => q ? `<img src="${q.startsWith('data:') ? q : 'data:image/png;base64,' + q}" alt="QR code do WhatsApp" style="width:260px;height:260px;image-rendering:pixelated;background:#fff;border-radius:12px;padding:8px">` : '<p class="muted">Gerando o código...</p>';
+    const m = UI.modal({
+      titulo: 'Conectar o WhatsApp', classe: 'pequeno',
+      corpo: `<div style="text-align:center"><div id="wa-qr">${img(r.qr)}</div>
+        <ol class="passos" style="text-align:left;margin-top:14px"><li>Abra o WhatsApp no celular do estabelecimento.</li><li>Toque em <b>Configurações</b> (ou nos três pontinhos) e em <b>Aparelhos conectados</b>.</li><li>Toque em <b>Conectar um aparelho</b> e aponte a câmera para o código.</li></ol>
+        <p class="muted" id="wa-situacao"><span class="pag-girando"></span> Esperando a leitura do código...</p></div>`,
+      rodape: '<button class="btn" data-fechar>Fechar</button>',
+      aoFechar: () => { fim = true; this.pintar(); }
+    });
+    // confere a conexão a cada 3 s e troca o código a cada 40 s (o WhatsApp expira o código)
+    for (let i = 0; i < 60 && !fim; i++) {
+      await esperar(3000);
+      if (fim) return;
+      const st = await Nuvem.funcao('whatsapp', { acao: 'estado' }).catch(() => null);
+      if (st?.estado === 'conectado') {
+        this.waGuardar(st);
+        fim = true; m.fechar();
+        return UI.toast(`WhatsApp conectado${st.numero ? ` (${fmtTel(st.numero)})` : ''}. As mensagens já saem sozinhas.`);
+      }
+      if (i % 13 === 12) {
+        const novo = await Nuvem.funcao('whatsapp', { acao: 'conectar' }).catch(() => null);
+        if (novo?.qr && $('#wa-qr', m.el)) $('#wa-qr', m.el).innerHTML = img(novo.qr);
+      }
+    }
+    if (!fim && $('#wa-situacao', m.el)) $('#wa-situacao', m.el).textContent = 'O código expirou. Feche e toque em Conectar de novo.';
+  }
+});

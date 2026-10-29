@@ -703,8 +703,10 @@ Object.assign(Painel, {
     const chave = (k, rot, sub = '', livre = true) => `<label class="chave ${livre ? '' : 'travada'}"><input type="checkbox" name="${k}" ${cfg[k] && livre ? 'checked' : ''} ${livre ? '' : 'disabled'}><i></i><span>${rot}${sub ? `<small class="muted" style="display:block">${sub}</small>` : ''}</span></label>`;
     const trava = r => `<button type="button" class="trava-linha" data-a="bloq-recurso" data-v="${r}">${ic('cadeado')}<span>${esc(RECURSOS[r].nome)}: disponível no plano ${esc(Planos.minimoPara(r)?.nome || 'superior')}</span><b>Quero</b></button>`;
     return `<div class="topo"><div><h1>Mensagens automáticas</h1><p class="sub">WhatsApp para clientes e equipe: confirmação, lembretes e cobrança</p></div></div>
-      <div class="aviso-faixa info">${ic('info')}<span>${typeof Nuvem !== 'undefined' && Nuvem.ativo
-        ? 'As mensagens ficam prontas aqui, no horário certo. Toque no botão verde de cada uma para enviar pelo seu WhatsApp. O envio totalmente automático chega numa próxima atualização.'
+      <div class="aviso-faixa ${b.whatsapp_estado === 'conectado' ? 'ok' : 'info'}">${ic(b.whatsapp_estado === 'conectado' ? 'check' : 'info')}<span>${typeof Nuvem !== 'undefined' && Nuvem.ativo
+        ? (b.whatsapp_estado === 'conectado'
+          ? `Envio automático ligado pelo WhatsApp ${esc(fmtTel(b.whatsapp_numero || b.whatsapp))}: as mensagens saem sozinhas no horário certo.`
+          : `O WhatsApp do estabelecimento não está conectado. As mensagens ficam prontas aqui e você envia com um toque no botão verde, ou <a href="${this.h('ajustes')}">conecte em Ajustes</a> para saírem sozinhas.`)
         : 'Na demonstração as mensagens ficam nesta caixa de saída, com o horário em que sairiam. Na versão oficial elas saem sozinhas pelo WhatsApp do estabelecimento.'}</span></div>
       <div class="duas-col">
         <div class="card"><div class="card-cab"><div><h3>Caixa de saída</h3><p>${todas.filter(m => m.status === 'agendada').length} programadas</p></div>
@@ -769,7 +771,7 @@ Object.assign(Painel, {
     const app = `<div class="card"><div class="card-cab"><div><h3>App no celular e notificações</h3><p>Instale o painel como app e receba avisos de novos agendamentos</p></div></div>
         <div class="acoes"><button type="button" class="btn" data-a="instalar-app">${ic('baixar')} Instalar o app</button><button type="button" class="btn" data-a="ativar-notif">${ic('info')} Ativar notificações neste aparelho</button><button type="button" class="btn fantasma" data-a="testar-notif">Testar</button></div>
         <p class="ajuda" style="margin-top:10px">${PWA.textoSituacao()}</p></div>`;
-    if (oficial) return `<div class="card" id="pagamento"><div class="card-cab"><div><h3>Pagamento</h3><p>Como o cliente paga você</p></div></div>
+    if (oficial) return `${this.cartaoWhatsApp()}<div class="card" id="pagamento"><div class="card-cab"><div><h3>Pagamento</h3><p>Como o cliente paga você</p></div></div>
         <div class="aviso-faixa info" style="margin-bottom:14px">${ic('info')}<span>O pagamento pelo app (PIX e cartão no chat, com o dinheiro caindo na sua conta do Mercado Pago) chega numa próxima atualização. Por enquanto o cliente paga no local.</span></div>
         <div class="grade-form">${pix}</div></div>${app}`;
     if (!Planos.tem(this.b, 'pagamento_app')) return `<div class="card" id="pagamento"><div class="card-cab"><div><h3>Pagamento</h3><p>Como o cliente paga você</p></div></div>
@@ -897,6 +899,12 @@ Object.assign(Painel, {
       case 'testar-notif': return PWA.notificar('BSFlow', 'As notificações deste aparelho estão funcionando.', UI.linkPainel(this.b));
       case 'ver-planos': return this.verPlanos();
       case 'ver-ajuda': return Ajuda.abrir();
+      case 'wa-conectar': return this.waConectar();
+      case 'wa-testar': return this.waAcao('testar', 'Mensagem de teste enviada para o WhatsApp do estabelecimento.');
+      case 'wa-desconectar':
+        if (!await UI.confirmar('As mensagens automáticas param até você conectar de novo.', { titulo: 'Desconectar o WhatsApp', ok: 'Desconectar', perigo: true })) return;
+        return this.waAcao('desconectar', 'WhatsApp desconectado.');
+      case 'wa-atualizar': return this.waAcao('estado');
       case 'trocar-senha': return this.trocarSenha();
       case 'passos-ocultar': await Passos.marcar(this.b, 'oculto'); this.b = Store.get('barbearias', this.b.id); UI.toast('Primeiros passos escondidos. O guia continua em Como usar.'); return this.pintar();
       case 'passo-feito': await Passos.marcar(this.b, el.dataset.v); this.b = Store.get('barbearias', this.b.id); return this.pintar();

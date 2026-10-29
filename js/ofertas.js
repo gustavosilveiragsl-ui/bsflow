@@ -349,6 +349,7 @@ const Mensagens = {
   agoraTxt() { const d = new Date(); return `${Datas.ymd(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`; },
   // chamado pelo Store sempre que um agendamento é criado ou alterado
   async aoMudarAgendamento(antes, a) {
+    if (typeof Nuvem !== 'undefined' && Nuvem.ativo) return; // na versão oficial o banco cria as mensagens
     const b = Store.get('barbearias', a.barbearia_id);
     if (!b || !Planos.tem(b, 'lembretes')) return;
     const cfg = this.config(b);
@@ -391,6 +392,7 @@ const Mensagens = {
   },
   // lembretes de mensalidade (gerados quando o painel abre)
   async mensalidades(b) {
+    if (typeof Nuvem !== 'undefined' && Nuvem.ativo) return; // na versão oficial a rotina diária do servidor cuida
     const cfg = this.config(b);
     if (!cfg.ativo || !Planos.tem(b, 'cobranca_auto')) return;
     const hoje = Datas.hoje(), ja = new Set(Store.de('mensagens', b.id).map(m => `${m.tipo}|${m.ref}`));

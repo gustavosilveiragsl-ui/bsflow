@@ -10,8 +10,8 @@
 // colunas de cada tabela (o que não está aqui vai para "extras")
 const COLUNAS = {
   planos: 'id,nome,preco,max_barbeiros,descricao,recursos,ativo,criado_em,atualizado_em,extras',
-  config: 'id,chave_pix,suporte_whatsapp,tolerancia_dias,bloqueio_auto,msg_lembrete,msg_atraso,atualizado_em',
-  barbearias: 'id,slug,nome,tipo,status,bloqueada,motivo_bloqueio,liberado_ate,teste_ate,inativada_em,plano_id,valor_mensal,dia_vencimento,responsavel,email,whatsapp,cpf_cnpj,cidade,endereco,maps_url,instagram,logo,cor,boas_vindas,horario,regras,asaas_cliente_id,asaas_assinatura_id,criado_em,atualizado_em,pagamento,mensagens,extras,origem,termos_em,primeiro_vencimento,asaas_erro',
+  config: 'id,chave_pix,suporte_whatsapp,tolerancia_dias,bloqueio_auto,msg_lembrete,msg_atraso,atualizado_em,site_url',
+  barbearias: 'id,slug,nome,tipo,status,bloqueada,motivo_bloqueio,liberado_ate,teste_ate,inativada_em,plano_id,valor_mensal,dia_vencimento,responsavel,email,whatsapp,cpf_cnpj,cidade,endereco,maps_url,instagram,logo,cor,boas_vindas,horario,regras,asaas_cliente_id,asaas_assinatura_id,criado_em,atualizado_em,pagamento,mensagens,extras,origem,termos_em,primeiro_vencimento,asaas_erro,whatsapp_instancia,whatsapp_estado,whatsapp_numero',
   cobrancas: 'id,barbearia_id,referencia,descricao,valor,vencimento,status,pago_em,forma,lembretes,cobrado_em,asaas_cobranca_id,link_pagamento,criado_em,atualizado_em,extras',
   barbeiros: 'id,barbearia_id,nome,telefone,foto,cor,comissao,servicos,horario,ativo,ordem,usuario_id,criado_em,atualizado_em,extras',
   servicos: 'id,barbearia_id,nome,descricao,preco,duracao,categoria,foto,ativo,online,ordem,criado_em,atualizado_em,extras',
@@ -26,7 +26,7 @@ const COLUNAS = {
   mensalistas: 'id,barbearia_id,plano_id,cliente_id,cliente_nome,cliente_tel,barbeiro_id,dia_vencimento,inicio,status,valor,obs,extras,criado_em,atualizado_em',
   mensalidades: 'id,barbearia_id,mensalista_id,referencia,valor,vencimento,status,pago_em,forma,lembretes,extras,criado_em,atualizado_em',
   creditos: 'id,barbearia_id,cliente_tel,cliente_nome,valor,origem,agendamento_id,extras,criado_em,atualizado_em',
-  mensagens: 'id,barbearia_id,tipo,para,nome,tel,ref,quando,status,texto,extras,criado_em,atualizado_em',
+  mensagens: 'id,barbearia_id,tipo,para,nome,tel,ref,quando,status,texto,extras,criado_em,atualizado_em,tentativas,erro,enviado_em,push_em',
   fechamentos: 'id,barbearia_id,data,barbeiro_id,fechado_em,resumo,extras,criado_em,atualizado_em'
 };
 for (const t in COLUNAS) COLUNAS[t] = COLUNAS[t].split(',');
@@ -219,7 +219,8 @@ const Nuvem = {
     await Promise.all([this.planosEConfig(db), ...TABELAS_ESTAB.map(async t => {
       db[t] = await this.todos(t, q => { q = q.eq('barbearia_id', b.id); return DATA_DE[t] ? q.gte(DATA_DE[t], desde) : q; });
     })]);
-    await this.mensagensPendentes(db);
+    // este aparelho já deixou notificar: confirma a inscrição no servidor (avisos com o app fechado)
+    if ('Notification' in window && Notification.permission === 'granted') this.inscreverPush().catch(() => {});
   },
   // chat (e tela de login do painel): só o que é público, mais o que é do próprio cliente
   async carregarChat(db, slug, completo) {
@@ -288,8 +289,6 @@ const Nuvem = {
     else {
       const r = this.deLinha(t, ev.new), i = lista.findIndex(x => x.id === r.id), antes = i >= 0 ? lista[i] : null;
       if (i >= 0) lista[i] = r; else lista.push(r);
-      // horário marcado pelo cliente no chat: as mensagens automáticas nascem aqui no painel
-      if (t === 'agendamentos' && !this.foiEuQueSalvei(r.id)) Mensagens.aoMudarAgendamento(antes, r).catch(e => console.warn(e));
     }
     if (Store.ouvinte) Store.ouvinte();
   },
@@ -311,6 +310,24 @@ const Nuvem = {
     const antes = Store.db;
     Store.db = db;
     try { for (const a of falta) await Mensagens.aoMudarAgendamento(null, a); } catch (e) { console.warn(e); } finally { Store.db = antes; }
+  },
+
+  /* ---------- notificações com o app fechado (Web Push) ---------- */
+  async inscreverPush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+    const chave = await this.rpc('push_chave');
+    if (!chave) return false;
+    const bin = atob(chave.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - chave.length % 4) % 4));
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(bin, c => c.charCodeAt(0)) });
+    const j = sub.toJSON();
+    if (/^chat:/.test(this.contexto || '')) {
+      const slug = this.contexto.slice(5);
+      return this.rpc('chat_push_inscrever', { p_slug: slug, p_tokens: this.tokens(slug), p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+    }
+    if (!this.conta || this.conta.papel === 'admin') return false;
+    return this.rpc('push_inscrever', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
   },
 
   /* ---------- gravação ---------- */

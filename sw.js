@@ -1,6 +1,6 @@
 /* BSFlow — service worker: guarda os arquivos do app para abrir rápido (e sem internet)
    e mostra as notificações. Busca sempre a versão nova primeiro. */
-const VERSAO = 'bsflow-2026-10-28-oficial';
+const VERSAO = 'bsflow-2026-10-29-automacao';
 const ARQUIVOS = ['./', './index.html', './css/app.css', './css/extras.css', './js/icones.js', './js/core.js', './js/ofertas.js', './js/seed.js', './js/seed-extras.js',
   './js/ui.js', './js/admin.js', './js/painel.js', './js/painel2.js', './js/cliente.js', './js/cliente2.js', './js/pwa.js', './js/config.js', './js/nuvem.js', './js/oficial.js', './js/main.js',
   './icones/app-192.png', './icones/app-512.png'];
