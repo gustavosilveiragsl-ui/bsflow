@@ -55,7 +55,16 @@ const PWA = {
       pegar('meta[name="apple-mobile-web-app-title"]', () => Object.assign(document.createElement('meta'), { name: 'apple-mobile-web-app-title' })).content = (curto || nome).slice(0, 18);
       pegar('meta[name="apple-mobile-web-app-capable"]', () => Object.assign(document.createElement('meta'), { name: 'apple-mobile-web-app-capable' })).content = 'yes';
       pegar('meta[name="theme-color"]', () => Object.assign(document.createElement('meta'), { name: 'theme-color' })).content = cor;
+      if (this.ios() && !this.instalado()) this.marcarRota();
     } catch (e) { console.warn('manifesto', e); }
+  },
+  /* iPhone: o "Adicionar à Tela de Início" guarda o endereço da tela, mas nem sempre o que vem depois do #.
+     A tela vai também no ?app=, e o app instalado abre direto nela (ver Rotas.inicioDoApp). */
+  marcarRota() {
+    const u = new URL(location.href), rota = location.hash.replace(/^#/, '');
+    if (rota && rota !== '/') u.searchParams.set('app', rota); else u.searchParams.delete('app');
+    const novo = u.pathname + (u.searchParams.toString() ? '?' + u.searchParams.toString() : '') + location.hash;
+    if (novo !== location.pathname + location.search + location.hash) history.replaceState(history.state, '', novo);
   },
   async instalar() {
     if (this.instalado()) return UI.toast('O app já está instalado neste aparelho.', 'info');

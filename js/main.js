@@ -18,6 +18,8 @@ const Rotas = {
     document.body.className = '';
     UI.aplicarCor(null);
     const p = this.partes();
+    // app instalado: lembra a última tela, para abrir direto nela da próxima vez
+    try { if (PWA.instalado() && p.length && !['contratar', 'entrar', 'termos', 'privacidade'].includes(p[0])) localStorage.setItem('bsflow:ultima-tela', '/' + p.join('/')); } catch (e) { /* sem armazenamento */ }
     const base = location.href.split('#')[0];
     PWA.configurar(p[0] === 'admin'
       ? { nome: `${APP.nome} · Administração`, curto: `${APP.nome} Admin`, texto: 'BS', inicio: base + '#/admin' }
@@ -99,6 +101,14 @@ const Home = {
   }
 };
 
+// app aberto pela tela de início sem tela no endereço: vai para a tela guardada (?app=) ou para a última usada
+Rotas.inicioDoApp = () => {
+  if (location.hash && location.hash !== '#/' && location.hash !== '#') return;
+  let rota = new URLSearchParams(location.search).get('app');
+  if (!rota && PWA.instalado()) { try { rota = localStorage.getItem('bsflow:ultima-tela'); } catch (e) { /* sem armazenamento */ } }
+  if (rota && /^\/[a-z0-9/_-]+$/i.test(rota)) history.replaceState(history.state, '', location.pathname + location.search + '#' + rota);
+};
+Rotas.inicioDoApp();
 Store.carregar();
 window.addEventListener('hashchange', () => Rotas.render());
 Rotas.render();
