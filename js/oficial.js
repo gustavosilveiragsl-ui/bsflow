@@ -515,3 +515,68 @@ if (Nuvem.ativo) Object.assign(Painel, {
     if (!fim && $('#wa-situacao', m.el)) $('#wa-situacao', m.el).textContent = 'O código expirou. Feche e toque em Conectar de novo.';
   }
 });
+
+/* ---------------- pagamento pelo app: Mercado Pago do estabelecimento ---------------- */
+if (Nuvem.ativo) {
+  Object.assign(Painel, {
+    // miolo do cartão "Pagamento" em Ajustes (pg = configuração atual, pix = campo da chave PIX)
+    corpoMercadoPago(pg, pix) {
+      const b = this.b, taxa = Store.db.config?.taxa_pagamento ?? 1;
+      if (!Planos.tem(b, 'pagamento_app')) return `<button type="button" class="trava-linha" data-a="bloq-recurso" data-v="pagamento_app" style="margin-bottom:14px">${ic('cadeado')}<span>Cobrança direto no app (PIX no chat): disponível no plano ${esc(Planos.minimoPara('pagamento_app')?.nome || 'Premium')}</span><b>Quero</b></button><div class="grade-form">${pix}</div>`;
+      // a produção só ganha o botão depois de receber a migração do pagamento (config_publica passa a trazer a taxa)
+      if (Store.db.config?.taxa_pagamento == null) return `<p class="muted" style="margin:0 0 12px">O pagamento pelo app (PIX no chat) chega em breve.</p><div class="grade-form">${pix}</div>`;
+      if (!b.mp_conectado) return `<p style="margin:0 0 12px">O cliente paga o horário pelo PIX direto no chat, e o dinheiro cai <b>na sua conta do Mercado Pago</b>, sem passar pelo BSFlow.</p>
+        <ol class="passos" style="margin:0 0 12px"><li>Toque em <b>Conectar Mercado Pago</b> e entre com a conta que vai receber (conta com identidade verificada).</li><li>Autorize o BSFlow a cobrar em seu nome.</li><li>Volte aqui e escolha como cobrar.</li></ol>
+        <div class="acoes"><button type="button" class="btn pri" data-a="mp-conectar">${ic('link')} Conectar Mercado Pago</button></div>
+        <p class="ajuda" style="margin-top:10px">O BSFlow retém ${String(taxa).replace('.', ',')}% de cada pagamento recebido pelo app, além da tarifa do próprio Mercado Pago.</p>
+        <div class="grade-form" style="margin-top:12px">${pix}</div>`;
+      const radio = (nome, atual, ops) => `<div class="opcoes-grade">${ops.map(([v, t]) => `<label class="op-btn" style="cursor:pointer"><input type="radio" name="${nome}" value="${v}" ${String(atual) === String(v) ? 'checked' : ''}> ${t}</label>`).join('')}</div>`;
+      return `<div class="aviso-faixa ok" style="margin-bottom:14px">${ic('check')}<span>Mercado Pago conectado${b.mp_user_id ? ` (conta ${esc(b.mp_user_id)})` : ''}. O dinheiro dos PIX cai direto nela.</span></div>
+        <div class="pilha">
+          <div class="campo"><span>Como funciona</span>${radio('pg_modo', pg.modo, [['desligado', 'Desligado'], ['opcional', 'Opcional: o cliente escolhe'], ['obrigatorio', 'Obrigatório para garantir o horário']])}</div>
+          <div class="campo"><span>Quanto cobrar antecipado</span>${radio('pg_sinal', pg.sinal, [[100, 'O valor todo'], [50, 'Sinal de 50%'], [30, 'Sinal de 30%']])}</div>
+          <div class="grade-form">
+            <label class="campo"><span>Se o cliente faltar</span><select name="pg_falta"><option value="retem" ${pg.falta !== 'credito' ? 'selected' : ''}>O valor fica com o estabelecimento</option></select></label>
+            ${pix}
+          </div>
+          <p class="ajuda">Se o cliente cancelar pelo chat dentro do prazo, o valor é devolvido sozinho pelo Mercado Pago. No modo obrigatório, quem não paga em 15 minutos perde o horário. O BSFlow retém ${String(taxa).replace('.', ',')}% de cada pagamento.</p>
+          <div class="acoes"><button type="button" class="btn perigo-txt" data-a="mp-desligar">${ic('power')} Desconectar Mercado Pago</button></div>
+        </div>`;
+    },
+    async mpConectar() {
+      try {
+        const r = await Nuvem.funcao('mp-conectar', { acao: 'url' });
+        location.href = r.url; // o Mercado Pago pede o login e devolve para este painel
+      } catch (e) { UI.erro(e); }
+    },
+    async mpDesligar() {
+      if (!await UI.confirmar('O cliente deixa de poder pagar pelo app. Os horários já pagos continuam valendo.', { titulo: 'Desconectar o Mercado Pago', ok: 'Desconectar', perigo: true })) return;
+      try {
+        await Nuvem.funcao('mp-conectar', { acao: 'desligar' });
+        const b = Store.get('barbearias', this.b.id);
+        if (b) Object.assign(b, { mp_conectado: false, mp_user_id: null });
+        this.b = b || this.b;
+        UI.toast('Mercado Pago desconectado.');
+        this.pintar();
+      } catch (e) { UI.erro(e); }
+    }
+  });
+  // cliques novos
+  const cliqueAntes = Painel.cliqueExtra;
+  Painel.cliqueExtra = async function (a, el, e) {
+    if (a === 'mp-conectar') return this.mpConectar();
+    if (a === 'mp-desligar') return this.mpDesligar();
+    return cliqueAntes.call(this, a, el, e);
+  };
+  // volta do login do Mercado Pago: avisa e limpa o ?mp= do endereço
+  const renderAntes = Painel.render;
+  Painel.render = function (...args) {
+    const r = renderAntes.apply(this, args);
+    const mp = new URLSearchParams((location.hash.split('?')[1] || '')).get('mp');
+    if (mp) {
+      history.replaceState(history.state, '', location.pathname + location.search + location.hash.split('?')[0]);
+      setTimeout(() => UI.toast(mp === 'ok' ? 'Mercado Pago conectado. Agora escolha como cobrar e salve os ajustes.' : 'Não deu para conectar o Mercado Pago. Tente de novo.', mp === 'ok' ? 'ok' : 'erro'), 400);
+    }
+    return r;
+  };
+}

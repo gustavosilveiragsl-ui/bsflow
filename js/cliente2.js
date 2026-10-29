@@ -123,6 +123,7 @@ Object.assign(Cliente, {
   /* ---------------- pagamento pelo app ---------------- */
   // devolve { orc, pagamento } ou 'voltar'
   async pPagamento(sel) {
+    if (Pagamentos.oficial()) return this.pPagamentoOficial(sel);
     const b = this.b, cfg = Pagamentos.config(b);
     const local = this.orcamento(sel, false);
     if (!Pagamentos.ativo(b) || local.total <= 0) return { orc: local, pagamento: null };
@@ -148,6 +149,57 @@ Object.assign(Cliente, {
       return { orc: local, pagamento: null };
     }
     return { orc: ant, pagamento: { ...pg, tipo: sinal ? 'sinal' : 'total' } };
+  },
+  /* Versão oficial: primeiro o servidor reserva o horário e calcula o preço; depois o cliente paga o PIX.
+     Aqui só se pergunta (ou avisa) como vai ser; quem cobra é pagarOficial, depois de reservar. */
+  async pPagamentoOficial(sel) {
+    const b = this.b, cfg = Pagamentos.config(b), local = this.orcamento(sel, false);
+    if (!Pagamentos.ativo(b) || local.total <= 0) return { orc: local, pagamento: null };
+    const sinal = cfg.sinal < 100, cobrar = Pagamentos.aCobrar(b, local.total);
+    let agora = cfg.modo === 'obrigatorio';
+    if (!agora) {
+      await this.bot('Quer já deixar pago pelo PIX? Assim seu horário fica garantido.');
+      agora = await this.widget(`<div class="widget w-botoes">${this.op(0, `${ic('gota')} Pagar agora com PIX · ${dinheiro(cobrar)}${sinal ? ' de sinal' : ''}`, 'pri')}${this.op(1, `${ic('loja')} Pagar no local · ${dinheiro(local.total)}`)}</div>`,
+        [{ valor: true, eco: 'Pagar agora com PIX' }, { valor: false, eco: 'Pagar no local' }],
+        { casar: t => { const n = semAcento(t); if (/agora|app|pix/.test(n)) return { valor: true }; if (/local|depois|na hora|la/.test(n)) return { valor: false }; return undefined; } });
+    } else {
+      await this.bot(`Para garantir o horário, o pagamento é feito agora pelo PIX${sinal ? `: um sinal de <b>${dinheiro(cobrar)}</b> (${cfg.sinal}%) e o resto no dia` : `: <b>${dinheiro(cobrar)}</b>`}. Você tem 15 minutos para pagar depois de reservar.`);
+    }
+    return { orc: local, pagamento: null, pagarDepois: agora };
+  },
+  // PIX de verdade (Mercado Pago): mostra o QR code e espera a confirmação do servidor
+  async pagarOficial(ag) {
+    const b = this.b, f = this.fluxo, obrig = Pagamentos.config(b).modo === 'obrigatorio';
+    let r;
+    try { r = await Nuvem.funcao('mp-pagar', { acao: 'criar', slug: b.slug, token: ag.token, forma: 'pix' }); }
+    catch (e) {
+      await this.bot(`${esc(e.message)}${obrig ? ' Se não conseguir pagar em 15 minutos, o horário é liberado.' : ' Seu horário está marcado: você paga no local.'}`);
+      return false;
+    }
+    const img = r.qr_base64 ? `<img src="data:image/png;base64,${r.qr_base64}" alt="QR code do PIX" style="width:210px;height:210px;background:#fff;border-radius:12px;padding:8px">` : '';
+    const caixa = this.add('bot', `<div class="widget pag-box"><div class="pag-topo"><b>PIX do seu horário</b><span>${dinheiro(r.valor)}</span></div>
+      <div class="pag-qr">${img}</div>
+      <p class="pag-aviso">${ic('info')} Abra o app do seu banco, escolha PIX e leia o código ou use o copia e cola.</p>
+      <div class="pag-codigo"><code>${esc(String(r.qr || '').slice(0, 40))}…</code><button type="button" class="btn-chat" data-a="copiar-pix" data-v="${esc(r.qr || '')}">${ic('copiar')} Copiar</button></div>
+      <p class="pag-aviso" id="pix-situacao"><span class="pag-girando"></span> Esperando o pagamento…</p>
+      ${obrig ? '' : `<div class="w-botoes"><button type="button" class="w-op" data-a="pix-sair">${ic('loja')} Pagar no local</button></div>`}</div>`, 'com-widget');
+    this._pixSair = false;
+    let pago = false;
+    for (let i = 0; i < 400 && !pago && !this._pixSair; i++) {
+      await esperar(3000);
+      if (f && (!f.vivo || f !== this.fluxo)) break;
+      const e = await Nuvem.funcao('mp-pagar', { acao: 'estado', slug: b.slug, token: ag.token }).catch(() => null);
+      if (e?.horario && e.horario !== 'confirmado') { await this.bot('Esse horário foi liberado por falta de pagamento. Quer marcar outro?'); return false; }
+      pago = e?.status === 'pago';
+    }
+    caixa.remove();
+    if (pago) {
+      const a = Store.get('agendamentos', ag.id);
+      if (a) a.pagamento = { status: 'pago', forma: 'pix', valor: r.valor, tipo: r.valor < Number(a.total) ? 'sinal' : 'total' };
+      await this.bot(`${ic('check')} Pagamento de <b>${dinheiro(r.valor)}</b> aprovado.`, { espera: 200 });
+    } else if (this._pixSair) await this.bot('Tudo bem, você paga no local.');
+    else await this.bot(obrig ? 'O tempo para pagar acabou e o horário foi liberado. Quer marcar outro?' : 'Não recebi o pagamento. Seu horário continua marcado e você paga no local.');
+    return pago;
   },
   // tela de pagamento (simulada na demonstração); devolve o pagamento ou null
   async pagar(valor, titulo) {

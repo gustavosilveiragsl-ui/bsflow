@@ -772,8 +772,7 @@ Object.assign(Painel, {
         <div class="acoes"><button type="button" class="btn" data-a="instalar-app">${ic('baixar')} Instalar o app</button><button type="button" class="btn" data-a="ativar-notif">${ic('info')} Ativar notificações neste aparelho</button><button type="button" class="btn fantasma" data-a="testar-notif">Testar</button></div>
         <p class="ajuda" style="margin-top:10px">${PWA.textoSituacao()}</p></div>`;
     if (oficial) return `${this.cartaoWhatsApp()}<div class="card" id="pagamento"><div class="card-cab"><div><h3>Pagamento</h3><p>Como o cliente paga você</p></div></div>
-        <div class="aviso-faixa info" style="margin-bottom:14px">${ic('info')}<span>O pagamento pelo app (PIX e cartão no chat, com o dinheiro caindo na sua conta do Mercado Pago) chega numa próxima atualização. Por enquanto o cliente paga no local.</span></div>
-        <div class="grade-form">${pix}</div></div>${app}`;
+        ${this.corpoMercadoPago(pg, pix)}</div>${app}`;
     if (!Planos.tem(this.b, 'pagamento_app')) return `<div class="card" id="pagamento"><div class="card-cab"><div><h3>Pagamento</h3><p>Como o cliente paga você</p></div></div>
         <button type="button" class="trava-linha" data-a="bloq-recurso" data-v="pagamento_app" style="margin-bottom:14px">${ic('cadeado')}<span>Cobrança direto no app (PIX e cartão no chat): disponível no plano ${esc(Planos.minimoPara('pagamento_app')?.nome || 'superior')}</span><b>Quero</b></button>
         <div class="grade-form">${pix}</div></div>${app}`;

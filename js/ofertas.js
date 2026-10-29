@@ -277,7 +277,12 @@ const Pagamentos = {
   config(b) { return { modo: 'desligado', sinal: 100, cancelamento: 'credito', falta: 'retem', chave_pix: '', prazo_credito: 90, ...(b.pagamento || {}) }; },
   // na versão oficial fica desligado até o pagamento de verdade (Mercado Pago) entrar
   oficial() { return typeof Nuvem !== 'undefined' && Nuvem.ativo; },
-  ativo(b) { return !this.oficial() && this.config(b).modo !== 'desligado' && Planos.tem(b, 'pagamento_app'); },
+  ativo(b) {
+    if (this.config(b).modo === 'desligado') return false;
+    // oficial: no chat o servidor já decidiu (chat_pagamento); no painel precisa do plano e da conta conectada
+    if (this.oficial()) return Nuvem.ehChat() || (!!b.mp_conectado && Planos.tem(b, 'pagamento_app'));
+    return Planos.tem(b, 'pagamento_app');
+  },
   aCobrar(b, total) { return round2(total * (this.config(b).sinal || 100) / 100); },
   simular(forma, valor) {
     const vel = typeof Cliente !== 'undefined' ? Cliente.vel : 1;

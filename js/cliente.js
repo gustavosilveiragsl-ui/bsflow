@@ -211,6 +211,7 @@ const Cliente = {
       case 'quero-pd': this.fecharFolha(); return this.querProduto(el.dataset.id);
       case 'promo-usar': return this.usarPromocao(el.dataset.id);
       case 'copiar-pix': return UI.copiar(el.dataset.v);
+      case 'pix-sair': this._pixSair = true; return;
       case 'notif': return this.ativarNotificacoes();
       default:
         if (this.RAPIDAS[a]) { this.eu(el.dataset.rot); return this.acao(a); }
@@ -383,6 +384,7 @@ const Cliente = {
               nome: sel.cliente.nome, telefone: sel.cliente.tel, origem: 'cliente', id: sel.remarcar?.id || null, obs: sel.remarcar?.obs || '', extras
             });
             if (pg?.orc.credito) await Creditos.lancar(b, { tel: ag.cliente_tel, nome: ag.cliente_nome, valor: -pg.orc.credito, origem: 'uso', agendamento_id: ag.id });
+            if (pg?.pagarDepois) await this.pagarOficial(ag); // versão oficial: horário reservado, agora o PIX
             return this.sucesso(ag, !!sel.remarcar);
           } catch (err) {
             if (err === CANCELADO) throw err;

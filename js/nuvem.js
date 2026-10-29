@@ -10,8 +10,8 @@
 // colunas de cada tabela (o que não está aqui vai para "extras")
 const COLUNAS = {
   planos: 'id,nome,preco,max_barbeiros,descricao,recursos,ativo,criado_em,atualizado_em,extras',
-  config: 'id,chave_pix,suporte_whatsapp,tolerancia_dias,bloqueio_auto,msg_lembrete,msg_atraso,atualizado_em,site_url',
-  barbearias: 'id,slug,nome,tipo,status,bloqueada,motivo_bloqueio,liberado_ate,teste_ate,inativada_em,plano_id,valor_mensal,dia_vencimento,responsavel,email,whatsapp,cpf_cnpj,cidade,endereco,maps_url,instagram,logo,cor,boas_vindas,horario,regras,asaas_cliente_id,asaas_assinatura_id,criado_em,atualizado_em,pagamento,mensagens,extras,origem,termos_em,primeiro_vencimento,asaas_erro,whatsapp_instancia,whatsapp_estado,whatsapp_numero',
+  config: 'id,chave_pix,suporte_whatsapp,tolerancia_dias,bloqueio_auto,msg_lembrete,msg_atraso,atualizado_em,site_url,taxa_pagamento',
+  barbearias: 'id,slug,nome,tipo,status,bloqueada,motivo_bloqueio,liberado_ate,teste_ate,inativada_em,plano_id,valor_mensal,dia_vencimento,responsavel,email,whatsapp,cpf_cnpj,cidade,endereco,maps_url,instagram,logo,cor,boas_vindas,horario,regras,asaas_cliente_id,asaas_assinatura_id,criado_em,atualizado_em,pagamento,mensagens,extras,origem,termos_em,primeiro_vencimento,asaas_erro,whatsapp_instancia,whatsapp_estado,whatsapp_numero,mp_conectado,mp_user_id',
   cobrancas: 'id,barbearia_id,referencia,descricao,valor,vencimento,status,pago_em,forma,lembretes,cobrado_em,asaas_cobranca_id,link_pagamento,criado_em,atualizado_em,extras',
   barbeiros: 'id,barbearia_id,nome,telefone,foto,cor,comissao,servicos,horario,ativo,ordem,usuario_id,criado_em,atualizado_em,extras',
   servicos: 'id,barbearia_id,nome,descricao,preco,duracao,categoria,foto,ativo,online,ordem,criado_em,atualizado_em,extras',
@@ -227,6 +227,8 @@ const Nuvem = {
     const d = await this.rpc('chat_dados', { p_slug: slug });
     if (!d) return;
     db.barbearias = [{ ...d.barbearia, _sit: d.situacao }];
+    // como o chat trata o pagamento (só liga se o plano libera e o Mercado Pago do estabelecimento está conectado)
+    db.barbearias[0].pagamento = await this.rpc('chat_pagamento', { p_slug: slug }).catch(() => ({ modo: 'desligado' }));
     db.planos = d.plano ? [d.plano] : [];
     db.config.suporte_whatsapp = d.suporte_whatsapp || '';
     for (const t of ['servicos', 'produtos', 'barbeiros', 'promocoes', 'fidelidades', 'planos_mensais']) db[t] = (d[t] || []).map(l => this.deLinha(t, l));
