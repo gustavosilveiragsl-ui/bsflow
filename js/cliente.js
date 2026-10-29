@@ -211,7 +211,7 @@ const Cliente = {
       case 'quero-pd': this.fecharFolha(); return this.querProduto(el.dataset.id);
       case 'promo-usar': return this.usarPromocao(el.dataset.id);
       case 'copiar-pix': return UI.copiar(el.dataset.v);
-      case 'pix-sair': this._pixSair = true; return;
+      case 'pix-sair': this._pixSair = el.dataset.v || 'local'; this._pagAcordar?.(); return; // 'outra' forma ou pagar no 'local'
       case 'notif': return this.ativarNotificacoes();
       default:
         if (this.RAPIDAS[a]) { this.eu(el.dataset.rot); return this.acao(a); }

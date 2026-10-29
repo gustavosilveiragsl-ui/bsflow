@@ -150,7 +150,7 @@ Object.assign(Cliente, {
     }
     return { orc: ant, pagamento: { ...pg, tipo: sinal ? 'sinal' : 'total' } };
   },
-  /* Versão oficial: primeiro o servidor reserva o horário e calcula o preço; depois o cliente paga o PIX.
+  /* Versão oficial: primeiro o servidor reserva o horário e calcula o preço; depois o cliente paga (PIX, crédito ou débito).
      Aqui só se pergunta (ou avisa) como vai ser; quem cobra é pagarOficial, depois de reservar. */
   async pPagamentoOficial(sel) {
     const b = this.b, cfg = Pagamentos.config(b), local = this.orcamento(sel, false);
@@ -158,48 +158,117 @@ Object.assign(Cliente, {
     const sinal = cfg.sinal < 100, cobrar = Pagamentos.aCobrar(b, local.total);
     let agora = cfg.modo === 'obrigatorio';
     if (!agora) {
-      await this.bot('Quer já deixar pago pelo PIX? Assim seu horário fica garantido.');
-      agora = await this.widget(`<div class="widget w-botoes">${this.op(0, `${ic('gota')} Pagar agora com PIX · ${dinheiro(cobrar)}${sinal ? ' de sinal' : ''}`, 'pri')}${this.op(1, `${ic('loja')} Pagar no local · ${dinheiro(local.total)}`)}</div>`,
-        [{ valor: true, eco: 'Pagar agora com PIX' }, { valor: false, eco: 'Pagar no local' }],
-        { casar: t => { const n = semAcento(t); if (/agora|app|pix/.test(n)) return { valor: true }; if (/local|depois|na hora|la/.test(n)) return { valor: false }; return undefined; } });
+      await this.bot('Quer já deixar pago pelo app, no PIX ou no cartão? Assim seu horário fica garantido.');
+      agora = await this.widget(`<div class="widget w-botoes">${this.op(0, `${ic('cartao')} Pagar agora · ${dinheiro(cobrar)}${sinal ? ' de sinal' : ''}`, 'pri')}${this.op(1, `${ic('loja')} Pagar no local · ${dinheiro(local.total)}`)}</div>`,
+        [{ valor: true, eco: 'Pagar agora pelo app' }, { valor: false, eco: 'Pagar no local' }],
+        { casar: t => { const n = semAcento(t); if (/agora|app|pix|cartao|credito|debito/.test(n)) return { valor: true }; if (/local|depois|na hora|la/.test(n)) return { valor: false }; return undefined; } });
     } else {
-      await this.bot(`Para garantir o horário, o pagamento é feito agora pelo PIX${sinal ? `: um sinal de <b>${dinheiro(cobrar)}</b> (${cfg.sinal}%) e o resto no dia` : `: <b>${dinheiro(cobrar)}</b>`}. Você tem 15 minutos para pagar depois de reservar.`);
+      await this.bot(`Para garantir o horário, o pagamento é feito agora pelo app, no PIX ou no cartão${sinal ? `: um sinal de <b>${dinheiro(cobrar)}</b> (${cfg.sinal}%) e o resto no dia` : `: <b>${dinheiro(cobrar)}</b>`}. Você tem 15 minutos para pagar depois de reservar.`);
     }
     return { orc: local, pagamento: null, pagarDepois: agora };
   },
-  // PIX de verdade (Mercado Pago): mostra o QR code e espera a confirmação do servidor
+  // pagamento de verdade (Mercado Pago): o cliente escolhe PIX, crédito ou débito e pode trocar até dar certo
   async pagarOficial(ag) {
+    const f = this.fluxo, obrig = Pagamentos.config(this.b).modo === 'obrigatorio';
+    const ops = [{ valor: 'pix', eco: 'PIX', rot: `${ic('gota')} PIX`, cls: 'pri' }, { valor: 'credito', eco: 'Cartão de crédito', rot: `${ic('cartao')} Cartão de crédito` },
+      { valor: 'debito', eco: 'Cartão de débito', rot: `${ic('cartao')} Cartão de débito` }];
+    if (!obrig) ops.push({ valor: 'local', eco: 'Pagar no local', rot: `${ic('loja')} Pagar no local` });
+    for (let vez = 0; vez < 6; vez++) {
+      if (f && (!f.vivo || f !== this.fluxo)) return false;
+      await this.bot(vez ? 'Quer tentar de outro jeito?' : 'Como você quer pagar?', { espera: 300 });
+      const forma = await this.widget(`<div class="widget w-botoes">${ops.map((o, i) => this.op(i, o.rot, o.cls || '')).join('')}</div>`, ops.map(o => ({ valor: o.valor, eco: o.eco })),
+        { casar: t => { const n = semAcento(t); if (/pix/.test(n)) return { valor: 'pix' }; if (/debito/.test(n)) return { valor: 'debito' }; if (/credito|cartao/.test(n)) return { valor: 'credito' };
+          if (!obrig && /local|depois|na hora/.test(n)) return { valor: 'local' }; return undefined; } });
+      const r = forma === 'local' ? 'local' : forma === 'pix' ? await this.pagarPix(ag) : await this.pagarCartao(ag, forma);
+      if (r === 'pago') return true;
+      if (r === 'local') { await this.bot('Tudo bem, você paga no local.'); return false; }
+      if (r === 'fim') return false;
+    }
+    await this.bot(obrig ? 'Não consegui confirmar o pagamento. Se não pagar em 15 minutos, o horário é liberado.' : 'Não consegui confirmar o pagamento. Seu horário continua marcado e você paga no local.');
+    return false;
+  },
+  // botões embaixo do PIX e do cartão: trocar a forma ou (no modo opcional) pagar no local
+  botoesSairPagamento(obrig) {
+    return `<div class="w-botoes"><button type="button" class="w-op" data-a="pix-sair" data-v="outra">${ic('voltar')} Outra forma de pagamento</button>${obrig ? '' : `<button type="button" class="w-op" data-a="pix-sair" data-v="local">${ic('loja')} Pagar no local</button>`}</div>`;
+  },
+  // o servidor já gravou o pagamento; aqui só atualiza a tela e avisa
+  async pagoOficial(ag, valor, forma) {
+    const a = Store.get('agendamentos', ag.id);
+    if (a) a.pagamento = { status: 'pago', forma, valor, tipo: valor < Number(a.total) ? 'sinal' : 'total' };
+    await this.bot(`${ic('check')} Pagamento de <b>${dinheiro(valor)}</b> aprovado${forma === 'pix' ? '' : ` no ${(FORMAS_PAGAMENTO[forma] || 'cartão').toLowerCase()}`}.`, { espera: 200 });
+  },
+  // PIX: mostra o QR code e espera a confirmação do servidor; devolve 'pago' | 'outra' | 'local' | 'fim'
+  async pagarPix(ag) {
     const b = this.b, f = this.fluxo, obrig = Pagamentos.config(b).modo === 'obrigatorio';
     let r;
     try { r = await Nuvem.funcao('mp-pagar', { acao: 'criar', slug: b.slug, token: ag.token, forma: 'pix' }); }
-    catch (e) {
-      await this.bot(`${esc(e.message)}${obrig ? ' Se não conseguir pagar em 15 minutos, o horário é liberado.' : ' Seu horário está marcado: você paga no local.'}`);
-      return false;
-    }
+    catch (e) { await this.bot(esc(e.message)); return 'outra'; }
     const img = r.qr_base64 ? `<img src="data:image/png;base64,${r.qr_base64}" alt="QR code do PIX" style="width:210px;height:210px;background:#fff;border-radius:12px;padding:8px">` : '';
     const caixa = this.add('bot', `<div class="widget pag-box"><div class="pag-topo"><b>PIX do seu horário</b><span>${dinheiro(r.valor)}</span></div>
       <div class="pag-qr">${img}</div>
       <p class="pag-aviso">${ic('info')} Abra o app do seu banco, escolha PIX e leia o código ou use o copia e cola.</p>
       <div class="pag-codigo"><code>${esc(String(r.qr || '').slice(0, 40))}…</code><button type="button" class="btn-chat" data-a="copiar-pix" data-v="${esc(r.qr || '')}">${ic('copiar')} Copiar</button></div>
       <p class="pag-aviso" id="pix-situacao"><span class="pag-girando"></span> Esperando o pagamento…</p>
-      ${obrig ? '' : `<div class="w-botoes"><button type="button" class="w-op" data-a="pix-sair">${ic('loja')} Pagar no local</button></div>`}</div>`, 'com-widget');
-    this._pixSair = false;
+      ${this.botoesSairPagamento(obrig)}</div>`, 'com-widget');
+    this._pixSair = null;
     let pago = false;
     for (let i = 0; i < 400 && !pago && !this._pixSair; i++) {
-      await esperar(3000);
-      if (f && (!f.vivo || f !== this.fluxo)) break;
+      await Promise.race([esperar(3000), new Promise(ok => { this._pagAcordar = ok; })]); // o botão de sair acorda na hora
+      if (this._pixSair || (f && (!f.vivo || f !== this.fluxo))) break;
       const e = await Nuvem.funcao('mp-pagar', { acao: 'estado', slug: b.slug, token: ag.token }).catch(() => null);
-      if (e?.horario && e.horario !== 'confirmado') { await this.bot('Esse horário foi liberado por falta de pagamento. Quer marcar outro?'); return false; }
+      if (e?.horario && e.horario !== 'confirmado') { caixa.remove(); await this.bot('Esse horário foi liberado por falta de pagamento. Quer marcar outro?'); return 'fim'; }
       pago = e?.status === 'pago';
     }
+    this._pagAcordar = null;
     caixa.remove();
-    if (pago) {
-      const a = Store.get('agendamentos', ag.id);
-      if (a) a.pagamento = { status: 'pago', forma: 'pix', valor: r.valor, tipo: r.valor < Number(a.total) ? 'sinal' : 'total' };
-      await this.bot(`${ic('check')} Pagamento de <b>${dinheiro(r.valor)}</b> aprovado.`, { espera: 200 });
-    } else if (this._pixSair) await this.bot('Tudo bem, você paga no local.');
-    else await this.bot(obrig ? 'O tempo para pagar acabou e o horário foi liberado. Quer marcar outro?' : 'Não recebi o pagamento. Seu horário continua marcado e você paga no local.');
-    return pago;
+    if (pago) { await this.pagoOficial(ag, r.valor, 'pix'); return 'pago'; }
+    if (this._pixSair) return this._pixSair;
+    if (f && (!f.vivo || f !== this.fluxo)) return 'fim';
+    await this.bot(obrig ? 'O tempo para pagar acabou e o horário foi liberado. Quer marcar outro?' : 'Não recebi o pagamento. Seu horário continua marcado e você paga no local.');
+    return 'fim';
+  },
+  // cartão (crédito ou débito): formulário seguro do Mercado Pago dentro do chat; os dados do cartão não passam pelo BSFlow
+  async pagarCartao(ag, forma) {
+    const b = this.b, f = this.fluxo, obrig = Pagamentos.config(b).modo === 'obrigatorio';
+    let ini;
+    try { ini = await Nuvem.funcao('mp-pagar', { acao: 'cartao-inicio', slug: b.slug, token: ag.token }); await FormCartao.carregar(); }
+    catch (e) { await this.bot(esc(e.message || 'Não deu para abrir o pagamento no cartão agora.')); return 'outra'; }
+    const id = uid('mpc_');
+    const caixa = this.add('bot', `<div class="widget pag-box"><div class="pag-topo"><b>${forma === 'debito' ? 'Cartão de débito' : 'Cartão de crédito'}</b><span>${dinheiro(ini.valor)}</span></div>
+      <p class="pag-aviso" id="${id}-abrindo"><span class="pag-girando"></span> Abrindo o pagamento seguro…</p>
+      <div class="pag-cartao" id="${id}"></div>
+      <p class="pag-aviso">${ic('cadeado')} Os dados do cartão vão direto para o Mercado Pago. O BSFlow não vê nem guarda.${forma === 'debito' ? ' No débito pela internet, o Mercado Pago aceita cartões Elo.' : ''}</p>
+      ${this.botoesSairPagamento(obrig)}</div>`, 'com-widget');
+    this._pixSair = null;
+    let ctrl = null;
+    const res = await new Promise(fim => {
+      this._pagAcordar = () => fim({ status: 'sair' });
+      const falhou = () => fim({ status: 'erro', motivo: 'Não deu para abrir o pagamento no cartão agora.' });
+      FormCartao.abrir(ini.public_key, id, {
+        valor: ini.valor, forma, falhar: falhou,
+        pronto: () => $(`#${id}-abrindo`)?.remove(),
+        enviar: dados => Nuvem.funcao('mp-pagar', { acao: 'cartao', slug: b.slug, token: ag.token, forma, dados }).then(fim, e => fim({ status: 'erro', motivo: e.message }))
+      }).then(c => { ctrl = c; }, falhou);
+    });
+    this._pagAcordar = null;
+    try { ctrl?.unmount(); } catch { /* o formulário já tinha saído */ }
+    caixa.remove();
+    if (f && (!f.vivo || f !== this.fluxo)) return 'fim';
+    if (res.status === 'sair') return this._pixSair || 'outra';
+    if (res.status === 'pago') { await this.pagoOficial(ag, res.valor, res.forma || forma); return 'pago'; }
+    if (res.status === 'pendente') {
+      await this.bot('<span class="pag-girando"></span> O Mercado Pago está conferindo o pagamento…');
+      for (let i = 0; i < 20; i++) {
+        await esperar(3000);
+        const e = await Nuvem.funcao('mp-pagar', { acao: 'estado', slug: b.slug, token: ag.token }).catch(() => null);
+        if (e?.status === 'pago') { await this.pagoOficial(ag, res.valor, res.forma || forma); return 'pago'; }
+        if (e?.status === 'recusado') break;
+      }
+      await this.bot('O pagamento não foi aprovado.');
+      return 'outra';
+    }
+    await this.bot(esc(res.motivo || 'O pagamento não foi aprovado.'));
+    return 'outra';
   },
   // tela de pagamento (simulada na demonstração); devolve o pagamento ou null
   async pagar(valor, titulo) {
@@ -279,7 +348,8 @@ Object.assign(Cliente, {
     const prox = Datas.somaMes(ym, 1), proxAberto = `${prox}-01` <= Agenda.ultimoDiaCliente(b) && Mensal.podeAgendar(b, m, `${prox}-01`).ok;
     if (rest > 0 && pode.ok) ops.push({ valor: 'um', eco: 'Agendar um horário', rot: `${ic('calendario-mais')} Agendar um horário`, cls: 'pri' });
     if ((rest > 1 && pode.ok) || proxAberto) ops.push({ valor: 'todos', eco: 'Agendar vários de uma vez', rot: `${ic('calendario')} ${rest > 1 && pode.ok ? `Agendar os ${rest} de uma vez` : `Agendar os de ${MESES[+prox.slice(5) - 1]}`}` });
-    if (pend && Pagamentos.ativo(b)) ops.push({ valor: 'pagar', eco: 'Pagar a mensalidade', rot: `${ic('cartao')} Pagar mensalidade · ${dinheiro(pend.valor)}`, cls: s.cod === 'atrasado' ? 'pri' : '' });
+    // versão oficial: a mensalidade ainda não é cobrada pelo app (só o horário); o pagamento simulado fica só na demonstração
+    if (pend && Pagamentos.ativo(b) && !Pagamentos.oficial()) ops.push({ valor: 'pagar', eco: 'Pagar a mensalidade', rot: `${ic('cartao')} Pagar mensalidade · ${dinheiro(pend.valor)}`, cls: s.cod === 'atrasado' ? 'pri' : '' });
     ops.push({ valor: 'meus', eco: 'Meus horários', rot: `${ic('relogio')} Meus horários` });
     if (!pode.ok) await this.bot(esc(pode.motivo));
     else if (!rest) await this.bot(`Você já usou todos os atendimentos de ${MESES[+ym.slice(5) - 1]}. No dia 1º libera de novo.`);
@@ -390,7 +460,7 @@ Object.assign(Cliente, {
       await this.bot('Qual plano você quer?');
       p = await this.widget(`<div class="widget w-botoes">${planos.map((x, i) => this.op(i, `${esc(x.nome)} · ${dinheiro(x.valor)}`)).join('')}</div>`, planos.map(x => ({ valor: x, eco: x.nome })));
     }
-    if (!Pagamentos.ativo(b)) {
+    if (!Pagamentos.ativo(b) || Pagamentos.oficial()) {
       await this.bot(`Para assinar o <b>${esc(p.nome)}</b>, fala com a gente no WhatsApp que a gente ativa pra você:`);
       this.botaoWhats(`Olá! Quero assinar o plano ${p.nome}.`);
       return this.menuRapido(['agendar']);
@@ -410,3 +480,34 @@ Object.assign(Cliente, {
     return this.menuPlano(m);
   }
 });
+
+/* Formulário de cartão do Mercado Pago (Card Payment Brick): carrega o SDK uma vez e abre dentro do chat.
+   Crédito ou débito conforme a escolha; à vista (sem parcelas). */
+const FormCartao = {
+  _sdk: null,
+  carregar() {
+    if (window.MercadoPago) return Promise.resolve();
+    return this._sdk ||= new Promise((ok, falha) => {
+      const s = document.createElement('script');
+      s.src = 'https://sdk.mercadopago.com/js/v2';
+      s.onload = () => ok();
+      s.onerror = () => { this._sdk = null; s.remove(); falha(new Error('Não deu para abrir o pagamento no cartão agora. Confira a internet e tente de novo.')); };
+      document.head.appendChild(s);
+    });
+  },
+  abrir(chave, id, { valor, forma, enviar, pronto, falhar }) {
+    const mp = new window.MercadoPago(chave, { locale: 'pt-BR' });
+    return mp.bricks().create('cardPayment', id, {
+      initialization: { amount: valor },
+      customization: {
+        paymentMethods: { types: { included: [forma === 'debito' ? 'debit_card' : 'credit_card'] }, minInstallments: 1, maxInstallments: 1 },
+        visual: { hideFormTitle: true, texts: { formSubmit: `Pagar ${dinheiro(valor)}` } }
+      },
+      callbacks: {
+        onReady: () => pronto?.(),
+        onSubmit: dados => enviar(dados),
+        onError: e => { console.warn('cartão', e); if (e?.type === 'critical') falhar?.(); }
+      }
+    });
+  }
+};

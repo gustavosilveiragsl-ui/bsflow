@@ -83,6 +83,9 @@
 .pag-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .pag-topo span { font-size: 22px; font-weight: 800; color: var(--c-acc-txt); }
 .pag-qr { display: grid; place-items: center; }
+/* formulário de cartão do Mercado Pago (vem com fundo claro; fica num cartão branco para combinar com o tema escuro) */
+.pag-cartao { background: #fff; border-radius: 12px; overflow: hidden; min-width: 0; }
+.pag-cartao:empty { display: none; }
 .pag-aviso { display: flex; gap: 8px; font-size: 12.5px; color: var(--c-muted); line-height: 1.4; }
 .pag-aviso .i { width: 15px; height: 15px; flex: none; margin-top: 1px; }
 .pag-codigo { display: flex; gap: 8px; align-items: center; padding: 6px 6px 6px 12px; border-radius: 12px; background: var(--c-card-2); border: 1px solid var(--c-line); }
