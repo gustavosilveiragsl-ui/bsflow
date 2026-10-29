@@ -144,7 +144,9 @@
 .tela-carregando { min-height: 60vh; display: grid; place-items: center; color: var(--muted); font-size: 15px; }
 .ok-txt { color: var(--ok); font-weight: 600; }
 .erro-txt { color: var(--ruim); font-weight: 600; }
-.site { min-height: 100vh; background: var(--side-bg); color: var(--side-text); display: flex; flex-direction: column; }
+/* no iPhone com o app instalado a tela vai até atrás do relógio e da ilha: o site desconta essas áreas */
+.site { min-height: 100vh; background: var(--side-bg); color: var(--side-text); display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 .site a { color: var(--accent); }
 .site .btn { color: var(--side-text); }
 .site .btn.pri { color: var(--accent-ink); }

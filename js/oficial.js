@@ -168,12 +168,11 @@ const Site = {
 
   home(app) {
     document.title = `${APP.nome} — agendamento online para barbearias e salões`;
-    const demo = location.href.split('#')[0].replace(/[^/]*$/, '') + 'demo/';
     app.innerHTML = this.casca(`
       <section class="site-hero">
         <h1>Agenda cheia, <em>sem ficar no WhatsApp</em> o dia todo.</h1>
         <p class="home-lead">O cliente marca sozinho, por uma conversa simples no seu link. Você acompanha a agenda, a equipe e o faturamento no painel, no computador ou no celular.</p>
-        <div class="acoes"><a class="btn pri grande" href="#/contratar">Começar ${DIAS_TESTE} dias grátis ${ic('direita')}</a><a class="btn grande" href="${demo}" target="_blank">${ic('olho')} Ver a demonstração</a></div>
+        <div class="acoes"><a class="btn pri grande" href="#/contratar">Começar ${DIAS_TESTE} dias grátis ${ic('direita')}</a></div>
         <p class="muted" style="margin-top:10px">Sem cartão para começar. Cancele quando quiser.</p>
       </section>
       <section class="site-recursos">
