@@ -295,7 +295,12 @@ const Admin = {
           <label class="campo inteiro"><span>Lembrete (antes de vencer)</span><textarea name="msg_lembrete" rows="3">${esc(c.msg_lembrete)}</textarea></label>
           <label class="campo inteiro"><span>Cobrança (depois de vencer)</span><textarea name="msg_atraso" rows="4">${esc(c.msg_atraso)}</textarea></label>
         </div></div>
-        ${this.oficial() ? `<div class="card"><div class="card-cab"><div><h3>Cobrança pelo Asaas</h3><p>Assinaturas criadas na contratação; os pagamentos chegam sozinhos pelo aviso do Asaas.</p></div></div>
+        ${this.oficial() ? `<div class="card"><div class="card-cab"><div><h3>E-mails</h3><p>Enviados pelo Resend, em nome de avisos@bsflow.app.br.</p></div></div><div class="grade-form">
+          <label class="campo"><span>E-mail para avisos</span><input type="email" name="email_avisos" value="${esc(c.email_avisos || '')}" placeholder="voce@gmail.com"><small>Recebe um aviso a cada cliente novo. Em branco, sem aviso. O cliente novo sempre recebe as boas-vindas.</small></label>
+        </div>
+          <p class="muted" style="margin:10px 0">A chave do Resend fica nos segredos do Supabase (RESEND_API_KEY), nunca aqui na tela.</p>
+          <div class="acoes"><button type="button" class="btn" data-a="email-testar">${ic('mensagem')} Enviar e-mail de teste</button></div></div>
+        <div class="card"><div class="card-cab"><div><h3>Cobrança pelo Asaas</h3><p>Assinaturas criadas na contratação; os pagamentos chegam sozinhos pelo aviso do Asaas.</p></div></div>
           <p class="muted" style="margin:0 0 10px">A chave do Asaas fica nos segredos do Supabase (ASAAS_API_KEY), nunca aqui na tela. Servidor: <b>${esc(Nuvem.cfg.nome)}</b>.</p>
           <div class="acoes"><button type="button" class="btn" data-a="asaas-testar">${ic('check')} Testar a conexão</button>
             <button type="button" class="btn" data-a="asaas-configurar">${ic('link')} Ligar o aviso de pagamento</button>
@@ -398,6 +403,7 @@ const Admin = {
         case 'filtro-cob': this.f.cob = el.dataset.v; return this.pintar();
         case 'ir-cob': this.f.cob = el.dataset.v; location.hash = '#/admin/cobrancas'; return;
         case 'mes': this.f.mes = Datas.somaMes(this.f.mes, Number(el.dataset.d)); return this.pintar();
+        case 'email-testar': return this.acaoServidor({ acao: 'email_testar', para: ($('[name="email_avisos"]')?.value || '').trim() }, r => `E-mail de teste enviado para ${r.para}. Confira a caixa de entrada (e o spam).`);
         case 'asaas-testar': return this.acaoServidor({ acao: 'asaas_testar' }, r => `Asaas ligado: ${r.conta} (${r.ambiente}).`);
         case 'asaas-configurar': return this.acaoServidor({ acao: 'asaas_configurar' }, () => 'Aviso de pagamento ligado no Asaas.');
         case 'asaas-assinar': return this.acaoServidor({ acao: 'asaas_assinar', barbearia_id: id }, r => `Assinatura em dia no Asaas · ${r.cobrancas} cobrança(s).`);
@@ -708,6 +714,11 @@ const Admin = {
       chave_pix: d.chave_pix, suporte_whatsapp: soDigitos(d.suporte_whatsapp), bloqueio_auto: !!f.bloqueio_auto.checked,
       tolerancia_dias: Math.max(0, Number(d.tolerancia_dias) || 0), msg_lembrete: d.msg_lembrete, msg_atraso: d.msg_atraso
     };
+    if (this.oficial()) {
+      const em = String(d.email_avisos || '').trim().toLowerCase();
+      if (em && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) throw new Error('Confira o e-mail para avisos.');
+      patch.email_avisos = em;
+    }
     if (d.senha_nova) {
       if (d.senha_nova.length < 4) throw new Error('A senha precisa ter pelo menos 4 caracteres.');
       patch.senha_admin = d.senha_nova;
